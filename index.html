@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manhattan / Building Atlas</title>
+    <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <header class="topbar">
+      <div class="topbar__left">
+        <div class="brand">
+          <span class="brand__glyph">◆</span>
+          <span class="brand__name">NYC Building Atlas</span>
+          <span class="brand__sub">skyline stories, block by block</span>
+        </div>
+        <div class="chip chip--ok">
+          <span class="chip__dot"></span>
+          <span>Search any NYC address</span>
+        </div>
+      </div>
+      <div class="topbar__center">
+        <div class="search">
+          <svg class="search__icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="7" cy="7" r="5"/><path d="M11 11 L14 14"/>
+          </svg>
+          <input id="search-input" type="text" placeholder="Search any NYC address or landmark…" autocomplete="off" spellcheck="false" />
+          <button id="search-clear" class="search__clear" aria-label="Clear">×</button>
+        </div>
+        <div id="search-results" class="search-results"></div>
+      </div>
+      <div class="topbar__right">
+        <div class="compass" id="compass" title="Click to reset north">
+          <svg viewBox="0 0 40 40" width="32" height="32">
+            <circle cx="20" cy="20" r="17" fill="#fffaf0" stroke="#d9ccac" stroke-width="1.5"/>
+            <g id="compass-rose">
+              <path d="M20 6 L23 20 L20 18 L17 20 Z" fill="#c84b2f" stroke="#5a4d40" stroke-width="0.6" stroke-linejoin="round"/>
+              <path d="M20 34 L17 20 L20 22 L23 20 Z" fill="#fffaf0" stroke="#5a4d40" stroke-width="0.6" stroke-linejoin="round"/>
+            </g>
+            <text x="20" y="6.6" font-family="serif" font-size="5" fill="#5a4d40" font-weight="700" text-anchor="middle" dominant-baseline="middle">N</text>
+          </svg>
+        </div>
+      </div>
+    </header>
+
+    <aside id="panel" class="panel panel--hidden">
+      <div class="panel__header">
+        <div class="panel__hid">BLD_00000</div>
+        <button id="panel-close" class="panel__close" aria-label="Close">
+          <svg viewBox="0 0 12 12" width="10" height="10"><path d="M1 1 L11 11 M11 1 L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+        </button>
+      </div>
+      <div id="panel-content"></div>
+    </aside>
+
+    <div class="legend">
+      <div class="legend__title">Era / Year built</div>
+      <div class="legend__row"><span class="legend__swatch" style="background:#7a3a32"></span><span>Pre-1900</span></div>
+      <div class="legend__row"><span class="legend__swatch" style="background:#b85a3a"></span><span>1900 – 1929</span></div>
+      <div class="legend__row"><span class="legend__swatch" style="background:#d8a23a"></span><span>1930 – 1959</span></div>
+      <div class="legend__row"><span class="legend__swatch" style="background:#5e8a78"></span><span>1960 – 1999</span></div>
+      <div class="legend__row"><span class="legend__swatch" style="background:#5a90c4"></span><span>2000 +</span></div>
+      <div class="legend__row legend__row--landmark">
+        <span class="legend__swatch legend__swatch--pulse" style="background:#e85a3a"></span>
+        <span>Landmark — click for story</span>
+      </div>
+    </div>
+
+    <div class="sources" id="sources">
+      <button class="sources__toggle" id="sources-toggle" aria-label="Toggle data sources">
+        <span class="sources__toggle-icon">ⓘ</span>
+        <span class="sources__toggle-text">Data sources</span>
+      </button>
+      <div class="sources__panel">
+        <div class="sources__title">Data sources</div>
+        <div>◉ Building records · <a href="https://data.cityofnewyork.us/City-Government/MapPLUTO/f888-ni5f" target="_blank">NYC MapPLUTO</a></div>
+        <div>◉ Footprints · <a href="https://data.cityofnewyork.us/Housing-Development/Building-Footprints/5zhs-2jue" target="_blank">NYC DOITT</a></div>
+        <div>◉ Address search · <a href="https://geosearch.planninglabs.nyc/" target="_blank">NYC Geosearch</a></div>
+        <div>◉ Building parts · <a href="https://www.openstreetmap.org/copyright" target="_blank">OSM Overpass</a></div>
+        <div>◉ Watercolor · <a href="https://stamen.com/" target="_blank">Stamen</a> · <a href="https://www.cooperhewitt.org/" target="_blank">Cooper Hewitt</a></div>
+        <div>◉ Labels · <a href="https://carto.com/" target="_blank">CARTO</a></div>
+        <div>◉ Landmark stories · curated</div>
+      </div>
+    </div>
+
+    <div id="loading" class="loading">
+      <div class="loading__label">LOADING ATLAS</div>
+      <div class="loading__bar"><div class="loading__fill" id="loading-fill"></div></div>
+      <div class="loading__hint" id="loading-hint">painting Manhattan…</div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
