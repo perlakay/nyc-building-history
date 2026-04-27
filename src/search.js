@@ -103,13 +103,20 @@ export function createSearch({ landmarks, onPickLandmark, onPickAddress, onClear
       const data = await res.json();
       const addrMatches = (data.features || [])
         .slice(0, 6)
-        .map(f => ({
-          kind: 'address',
-          label: f.properties.label || f.properties.name,
-          borough: [f.properties.borough, f.properties.locality].filter(Boolean).join(', ') || 'New York City',
-          coords: f.geometry.coordinates,
-          name: f.properties.label
-        }));
+        .map(f => {
+          // Geosearch puts BIN/BBL in addendum.pad — that's the city's
+          // authoritative building identifier. We pass it through so the map
+          // can match by BIN against our footprint dataset.
+          const bin = f.properties.addendum?.pad?.bin;
+          return {
+            kind: 'address',
+            label: f.properties.label || f.properties.name,
+            borough: [f.properties.borough, f.properties.locality].filter(Boolean).join(', ') || 'New York City',
+            coords: f.geometry.coordinates,
+            bin: bin ? parseInt(bin, 10) : null,
+            name: f.properties.label
+          };
+        });
 
       const combined = [...lmMatches, ...addrMatches];
       if (!combined.length) {

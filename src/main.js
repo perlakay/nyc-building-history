@@ -65,6 +65,18 @@ const map = new maplibregl.Map({
 window.mapDebug = map;
 
 let selectedLandmarkId = null;
+let selectedBuildingId = null;
+
+function setSelectedBuilding(id) {
+  if (selectedBuildingId === id) return;
+  if (selectedBuildingId !== null && selectedBuildingId !== undefined) {
+    try { map.setFeatureState({ source: 'buildings', id: selectedBuildingId }, { selected: false }); } catch {}
+  }
+  selectedBuildingId = id;
+  if (id !== null && id !== undefined) {
+    try { map.setFeatureState({ source: 'buildings', id }, { selected: true }); } catch {}
+  }
+}
 
 async function loadBuildings() {
   updateLoading('downloading building footprints…', 5);
@@ -93,9 +105,17 @@ async function loadBuildings() {
   return fc;
 }
 
+// BIN → building feature index. Built once when buildings load so we can
+// snap a search hit to the exact footprint by NYC's authoritative ID.
+const buildingByBin = new Map();
+
 map.on('load', async () => {
   try {
     const fc = await loadBuildings();
+    for (const f of fc.features) {
+      const bin = f.properties && f.properties.bin;
+      if (bin != null) buildingByBin.set(bin, f);
+    }
     const lmRes = await fetch('/data/landmark_footprints.geojson');
     const lmFc = await lmRes.json();
     // Detailed OSM building parts for landmarks (where available) — gives
@@ -146,6 +166,8 @@ map.on('load', async () => {
       paint: {
         'fill-extrusion-color': [
           'case',
+          ['boolean', ['feature-state', 'selected'], false],
+          '#f3d27a',
           ['boolean', ['feature-state', 'hover'], false],
           '#1f1a14',
           ERA_RAMP
@@ -242,44 +264,48 @@ compassEl?.addEventListener('click', () => {
 });
 
 // Single click handler — every building should pop a card.
+// We only treat a click as a "landmark" click when it hits the landmark's
+// GROUND FOOTPRINT (`landmark-fill`). Tower setbacks / spires (`landmark-parts`,
+// which sit high in the air with `min_h_m > 0`) are excluded — otherwise they
+// hijack clicks on adjacent buildings whose pixels happen to sit under a spire.
 map.on('click', (e) => {
-  // 1. Did the click hit one of the curated landmark masses?
-  const lmLayers = ['landmark-fill', 'landmark-parts'].filter(id => map.getLayer(id));
-  if (lmLayers.length) {
-    const lm = map.queryRenderedFeatures(e.point, { layers: lmLayers });
+  // 1. Landmark ground-footprint hit?
+  if (map.getLayer('landmark-fill')) {
+    const lm = map.queryRenderedFeatures(e.point, { layers: ['landmark-fill'] });
     if (lm.length && lm[0].properties.id) {
+      setSelectedBuilding(null);
       openLandmark(lm[0].properties.id);
       return;
     }
   }
 
-  // 2. Otherwise, treat ANY clicked building as a building click.
+  // 2. Any building under the cursor → its own card.
   if (map.getLayer('buildings-fill')) {
     const bld = map.queryRenderedFeatures(e.point, { layers: ['buildings-fill'] });
     if (bld.length) {
-      openGenericAt(e.lngLat, bld[0].properties);
+      setSelectedBuilding(bld[0].id);
+      const c = featureCentroid(bld[0]) || [e.lngLat.lng, e.lngLat.lat];
+      openGenericAt({ lng: c[0], lat: c[1] }, bld[0].properties);
       return;
     }
   }
 
-  // 3. Nothing under the click — try a wider radius (helps thin/sliver lots).
-  const wider = map.queryRenderedFeatures(
-    [[e.point.x - 8, e.point.y - 8], [e.point.x + 8, e.point.y + 8]],
-    { layers: map.getLayer('buildings-fill') ? ['buildings-fill'] : [] }
-  );
-  if (wider.length) {
-    openGenericAt(e.lngLat, wider[0].properties);
-    return;
+  // 3. Sliver-lot fallback — small radius around the click.
+  if (map.getLayer('buildings-fill')) {
+    const wider = map.queryRenderedFeatures(
+      [[e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6]],
+      { layers: ['buildings-fill'] }
+    );
+    if (wider.length) {
+      setSelectedBuilding(wider[0].id);
+      const c = featureCentroid(wider[0]) || [e.lngLat.lng, e.lngLat.lat];
+      openGenericAt({ lng: c[0], lat: c[1] }, wider[0].properties);
+      return;
+    }
   }
+  setSelectedBuilding(null);
 
-  // 4. Last fallback — proximity to a landmark coordinate.
-  const near = nearestLandmark(e.lngLat);
-  if (near && near.distKm < 0.04) {
-    openLandmark(near.landmark.id);
-    return;
-  }
-
-  // 5. Truly empty space (water, park) — show an "outside the atlas" card.
+  // 4. Truly empty space (water, road, park) — "outside the atlas" card.
   renderPanel({ generic: true, notFound: true });
   document.getElementById('panel').classList.remove('panel--hidden');
 });
@@ -314,57 +340,108 @@ map.on('mousemove', (e) => {
 });
 map.on('mouseleave', 'buildings-fill', () => setHoveredBuilding(null));
 
-async function openGenericAt(lngLat, props = {}) {
+// Snap an arbitrary lng/lat to the nearest building footprint visible on
+// screen. Returns the centroid of the matched footprint, the feature id (so
+// the caller can highlight it), and its properties.
+function snapToBuilding(lng, lat) {
+  if (!map.getLayer('buildings-fill')) return { lng, lat, id: null, props: null };
+  const pt = map.project([lng, lat]);
+  for (const r of [0, 6, 14, 28, 50, 80]) {
+    const feats = map.queryRenderedFeatures(
+      r === 0 ? pt : [[pt.x - r, pt.y - r], [pt.x + r, pt.y + r]],
+      { layers: ['buildings-fill'] }
+    );
+    if (feats.length) {
+      // For widening rings, pick the feature whose centroid is closest to the
+      // original point so we don't grab a far building accidentally.
+      let best = feats[0], bestD = Infinity;
+      for (const f of feats) {
+        const c = featureCentroid(f);
+        if (!c) continue;
+        const d = (c[0] - lng) ** 2 + (c[1] - lat) ** 2;
+        if (d < bestD) { bestD = d; best = f; }
+      }
+      const c = featureCentroid(best);
+      return {
+        lng: c ? c[0] : lng,
+        lat: c ? c[1] : lat,
+        id: best.id,
+        props: best.properties
+      };
+    }
+  }
+  return { lng, lat, id: null, props: null };
+}
+
+function featureCentroid(feature) {
+  const g = feature.geometry;
+  if (!g) return null;
+  const rings = g.type === 'Polygon' ? [g.coordinates[0]]
+              : g.type === 'MultiPolygon' ? g.coordinates.map(p => p[0])
+              : null;
+  if (!rings) return null;
+  let sx = 0, sy = 0, n = 0;
+  for (const ring of rings) {
+    for (const [x, y] of ring) { sx += x; sy += y; n++; }
+  }
+  return n ? [sx / n, sy / n] : null;
+}
+
+async function openGenericAt(lngLat, props = {}, knownAddress = null, opts = {}) {
+  const { exactMatch = false } = opts;
   const localRecord = buildLocalRecord(lngLat, props);
-  // Show the card immediately with a loading title.
+  const fromSearch = !!knownAddress;
+  // Only show the "best guess" disclaimer when search was a fuzzy snap; exact
+  // BIN matches don't need it.
+  const fuzzyMatch = fromSearch && !exactMatch;
+  const initialAddress = knownAddress || 'Loading address…';
   renderPanel({
     generic: true,
     era: localRecord.era,
-    address: { ...localRecord, address: 'Loading address…' },
+    address: { ...localRecord, address: initialAddress },
     localOnly: true,
-    addressLoading: true
+    addressLoading: !knownAddress,
+    fromSearch: fuzzyMatch
   });
   document.getElementById('panel').classList.remove('panel--hidden');
 
-  // Race PLUTO (rich record) against reverse-geocode (just the street address).
-  // Whichever returns first updates the title; PLUTO replaces it with full data.
   const pluto = fetchAddress(lngLat.lng, lngLat.lat).catch(() => null);
-  const reverse = reverseGeocode(lngLat.lng, lngLat.lat);
+  const reversePromise = knownAddress ? Promise.resolve(knownAddress) : reverseGeocode(lngLat.lng, lngLat.lat);
 
-  const reverseAddr = await reverse;
+  const reverseAddr = await reversePromise;
   const plutoSettled = await Promise.race([pluto, new Promise(r => setTimeout(() => r('pending'), 0))]);
 
-  // If PLUTO is still pending, show the reverse-geocoded address so the user
-  // never sees lat/lng coordinates as a title.
-  if (plutoSettled === 'pending' && reverseAddr) {
+  if (plutoSettled === 'pending' && reverseAddr && !knownAddress) {
     renderPanel({
       generic: true,
       era: localRecord.era,
       address: { ...localRecord, address: reverseAddr },
       localOnly: true,
-      addressLoading: true
+      addressLoading: true,
+      fromSearch: fuzzyMatch
     });
   }
 
   const details = await pluto;
   if (details) {
-    // PLUTO's address can be empty for some lots — fall back to reverse.
     const merged = { ...localRecord, ...details };
-    if (!merged.address) merged.address = reverseAddr || 'Address unavailable';
+    if (knownAddress) merged.address = knownAddress;
+    else if (!merged.address) merged.address = reverseAddr || 'Address unavailable';
     renderPanel({
       generic: true,
       era: eraFromYear(details.yearbuilt) || localRecord.era,
       address: merged,
-      addressLoading: false
+      addressLoading: false,
+      fromSearch: fuzzyMatch
     });
   } else {
-    // PLUTO failed — keep what we have, but ensure the title is real.
     renderPanel({
       generic: true,
       era: localRecord.era,
-      address: { ...localRecord, address: reverseAddr || 'Address unavailable' },
+      address: { ...localRecord, address: knownAddress || reverseAddr || 'Address unavailable' },
       localOnly: true,
-      addressLoading: false
+      addressLoading: false,
+      fromSearch: fuzzyMatch
     });
   }
 }
@@ -493,11 +570,16 @@ function openLandmark(id) {
   }
   const era = ERA_BY_ID[landmark.id] || 'beauxarts';
   renderPanel({ ...landmark, era });
-  map.flyTo({
+  // Move just enough to frame the landmark next to the panel. If the user is
+  // already close, keep their zoom (don't overshoot); only nudge in when far.
+  const currentZoom = map.getZoom();
+  const targetZoom = currentZoom >= 16 ? currentZoom : 16.5;
+  map.easeTo({
     center: landmark.coords,
-    zoom: Math.max(map.getZoom(), 16),
-    speed: 0.9, curve: 1.4,
-    offset: [-220, 0]
+    zoom: targetZoom,
+    pitch: Math.max(map.getPitch(), 45),
+    duration: 900,
+    offset: [220, 0]
   });
 }
 
@@ -516,6 +598,7 @@ document.addEventListener('click', (e) => {
 document.getElementById('panel-close').addEventListener('click', () => {
   document.getElementById('panel').classList.add('panel--hidden');
   selectedLandmarkId = null;
+  setSelectedBuilding(null);
   if (map.getLayer('landmark-selected')) {
     map.setFilter('landmark-selected', ['==', ['get', 'id'], '']);
   }
@@ -548,16 +631,43 @@ createSearch({
   landmarks: LANDMARKS,
   onPickLandmark: (id) => {
     if (searchMarker) { searchMarker.remove(); searchMarker = null; }
+    setSelectedBuilding(null);
     openLandmark(id);
   },
   onPickAddress: async (r) => {
+    // Prefer BIN match (NYC's authoritative building id) when Geosearch
+    // gives us one — it lands on the exact footprint, no proximity guessing.
+    const binFeature = r.bin ? buildingByBin.get(r.bin) : null;
+    if (binFeature) {
+      const c = featureCentroid(binFeature) || r.coords;
+      map.easeTo({ center: c, zoom: Math.max(map.getZoom(), 17), pitch: Math.max(map.getPitch(), 45), duration: 900, offset: [220, 0] });
+      placeSearchMarker(c[0], c[1], r.label);
+      // Grab the rendered feature's id at the centroid so feature-state
+      // shading lights up the exact footprint (id source = MapLibre's
+      // internal generated id, which we can't predict from BIN alone).
+      map.once('idle', () => {
+        const pt = map.project(c);
+        const feats = map.queryRenderedFeatures(pt, { layers: ['buildings-fill'] });
+        const matched = feats.find(f => f.properties && f.properties.bin === r.bin) || feats[0];
+        if (matched) setSelectedBuilding(matched.id);
+      });
+      openGenericAt({ lng: c[0], lat: c[1] }, binFeature.properties, r.label, { exactMatch: true });
+      return;
+    }
+
+    // No BIN (rare, e.g. an intersection or place result) → centroid snap.
     const [lng, lat] = r.coords;
-    placeSearchMarker(lng, lat, r.label);
-    map.flyTo({ center: [lng, lat], zoom: 17, speed: 1.0, curve: 1.4, offset: [-220, 0] });
-    await openGenericAt({ lng, lat });
+    map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 17), pitch: Math.max(map.getPitch(), 45), duration: 900, offset: [220, 0] });
+    map.once('idle', () => {
+      const snap = snapToBuilding(lng, lat);
+      setSelectedBuilding(snap.id);
+      placeSearchMarker(snap.lng, snap.lat, r.label);
+      openGenericAt({ lng: snap.lng, lat: snap.lat }, snap.props || {}, r.label, { exactMatch: false });
+    });
   },
   onClear: () => {
     if (searchMarker) { searchMarker.remove(); searchMarker = null; }
+    setSelectedBuilding(null);
   }
 });
 

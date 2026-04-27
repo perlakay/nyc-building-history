@@ -124,11 +124,6 @@ function renderGeneric(l) {
   // Design / form paragraph.
   const designBits = [];
   if (a.form) designBits.push(`The massing reads as a ${a.form}.`);
-  if (a.bldgclass) {
-    const cls = bldgClassDescription(a.bldgclass);
-    if (cls) designBits.push(`The Department of Finance classifies it as ${a.bldgclass} — a ${cls}.`);
-  }
-  if (a.zone) designBits.push(`The zoning is ${a.zone}${zoneDescription(a.zone)}, which sets the envelope for height, use, and setbacks on this lot.`);
 
   // Did-you-know fact — synthesized from what we know.
   const fact = synthesizeFact(yearbuilt, a);
@@ -146,9 +141,6 @@ function renderGeneric(l) {
         ${row('Built', yearbuilt ? String(yearbuilt) : '—')}
         ${a.height ? row('Height', a.height + (a.heightMeters ? ` · ${a.heightMeters}` : '')) : ''}
         ${a.floors ? row('Floors', String(a.floors)) : ''}
-        ${a.units ? row('Units', a.units.toLocaleString()) : ''}
-        ${a.bldgclass ? row('Class', a.bldgclass) : ''}
-        ${a.zone ? row('Zoning', a.zone) : ''}
         ${a.borough ? row('Borough', boroughLabel(a.borough)) : ''}
       </dl>
 
@@ -169,6 +161,19 @@ function renderGeneric(l) {
           <div class="card__fact-label">Did you know</div>
           <p>${escape(fact)}</p>
         </aside>` : ''}
+
+      ${l.fromSearch ? `
+        <p class="card__note">
+          Pin position is our best guess from the city geocoder — on dense
+          blocks the highlighted footprint may be a neighbor, but the address
+          shown above is what you searched.
+        </p>` : ''}
+      ${(!l.fromSearch && !l.notFound) ? `
+        <p class="card__note">
+          Address is reverse-geocoded from the click point. NYC assigns one
+          primary address per lot, so neighboring buildings on the same parcel
+          can share an address even when they're physically distinct.
+        </p>` : ''}
 
       <div class="card__footer">
         ${footerSource}

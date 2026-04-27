@@ -595,6 +595,19 @@ html, body {
   100% { left: 100%; }
 }
 
+.card__note {
+  margin: 18px 0 0;
+  padding: 12px 14px;
+  background: rgba(108, 132, 168, 0.08);
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-3);
+}
+
 .card__footer {
   margin-top: 28px;
   padding-top: 14px;
