@@ -77,6 +77,175 @@ html, body {
 }
 
 /* Compass widget */
+/* Neighborhoods overlay toggle — top-right under the compass, well clear
+   of the bottom-left legend so they never overlap. */
+.hoods-toggle {
+  position: absolute;
+  top: 80px;
+  right: 18px;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  padding: 9px 16px;
+  font-family: var(--serif);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+  cursor: pointer;
+  box-shadow: 0 2px 0 var(--line), 0 8px 24px rgba(0, 0, 0, 0.18);
+  transition: all 160ms ease;
+}
+.hoods-toggle:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+.hoods-toggle--active {
+  background: rgba(216, 162, 58, 0.18);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.hoods-toggle--active:hover {
+  background: rgba(216, 162, 58, 0.28);
+}
+
+/* Neighborhoods side panel — lists the named areas with color swatches.
+   Sits to the right, below the toggle. Click an item to highlight + tell. */
+.hoods-list {
+  position: absolute;
+  top: 130px;
+  right: 18px;
+  z-index: 7;
+  width: 220px;
+  max-height: calc(100vh - 200px);
+  background: var(--card);
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 0;
+  overflow-y: auto;
+  box-shadow: 0 3px 0 var(--line), 0 12px 28px rgba(0, 0, 0, 0.22);
+  transition: opacity 200ms, transform 200ms;
+}
+.hoods-list--hidden {
+  opacity: 0;
+  transform: translateX(20px);
+  pointer-events: none;
+}
+/* Reset browser button defaults so the dark theme isn't overridden. */
+.hoods-list button {
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  color: inherit;
+}
+
+.hoods-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 14px 10px 18px;
+  border-bottom: 1px dashed var(--line);
+  margin-bottom: 6px;
+}
+.hoods-list__title {
+  font-family: var(--serif);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.hoods-list__close {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1.5px solid var(--line-strong);
+  color: var(--ink-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 160ms ease;
+  padding: 0;
+}
+.hoods-list__close:hover {
+  background: var(--accent);
+  border-color: var(--accent-2);
+  color: var(--paper);
+  transform: rotate(90deg);
+}
+.hoods-list__items {
+  display: flex;
+  flex-direction: column;
+}
+.hoods-list__item {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  transition: background 130ms, border-color 130ms;
+}
+.hoods-list__item:hover {
+  background: var(--paper-2);
+}
+.hoods-list__item--active {
+  background: var(--paper-2);
+  border-left-color: var(--hood-color, var(--gold));
+}
+/* Toggle (left): swatch in solid color when on, outlined when off. */
+.hoods-list__check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 9px 0;
+  color: inherit;
+}
+.hoods-list__swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: transparent;
+  border: 1.5px solid var(--hood-color, var(--gold));
+  transition: background 130ms;
+}
+.hoods-list__item--on .hoods-list__swatch {
+  background: var(--hood-color, var(--gold));
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+/* Name (right): clickable label that opens the story card. */
+.hoods-list__name {
+  flex: 1;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 9px 18px 9px 4px;
+  cursor: pointer;
+  font-family: var(--serif);
+  font-size: 13.5px;
+  color: var(--ink-3);
+  transition: color 130ms;
+}
+.hoods-list__item--on .hoods-list__name {
+  color: var(--ink-2);
+}
+.hoods-list__item--on:hover .hoods-list__name,
+.hoods-list__item--active .hoods-list__name {
+  color: var(--ink);
+}
+
 .compass {
   width: 42px; height: 42px;
   background: var(--card);
@@ -734,4 +903,9 @@ html, body {
   .panel--hidden { transform: translateY(40px); }
   .legend, .sources { display: none; }
   .brand__sub { display: none; }
+  .hoods-toggle, .hoods-list { display: none; }
+}
+
+@media (max-width: 1100px) {
+  .topbar__center { max-width: 380px; }
 }

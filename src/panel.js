@@ -47,13 +47,13 @@ export function renderPanel(l) {
     <div class="card__body">
       <div class="card__eyebrow">${escape((l.style || 'Landmark').toUpperCase())}</div>
       <h1 class="card__title">${escape(l.name)}</h1>
-      <div class="card__year-line">Built ${escape(String(l.year))}</div>
+      ${l.isHood ? '' : `<div class="card__year-line">Built ${escape(String(l.year))}</div>`}
 
-      <dl class="card__meta">
+      ${l.isHood ? '' : `<dl class="card__meta">
         ${l.architect ? `<div><dt>Architect</dt><dd>${escape(l.architect)}</dd></div>` : ''}
         ${l.height ? `<div><dt>Size</dt><dd>${escape(l.height)}</dd></div>` : ''}
         ${row('Era', eraLabel(l.era))}
-      </dl>
+      </dl>`}
 
       ${l.history ? `
         <section class="card__section">

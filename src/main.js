@@ -237,6 +237,51 @@ map.on('load', async () => {
       }
     });
 
+    // Neighborhoods overlay (toggleable). Soft outlines + labels — does not
+    // overtake the buildings unless the toggle is on.
+    try {
+      const hoodsRes = await fetch('/data/neighborhoods.geojson');
+      const hoodsFc = await hoodsRes.json();
+      // Source uses array-index ids so feature-state works deterministically.
+      hoodsFc.features.forEach((f, i) => { f.id = i; });
+      buildHoodsList(hoodsFc);
+      map.addSource('hoods', { type: 'geojson', data: hoodsFc });
+      // Color each neighborhood from its own feature property — so the
+      // overlay reads as a map-of-distinct-areas, not one wash of color.
+      // Layer is below buildings-fill so it never covers the towers.
+      map.addLayer({
+        id: 'hoods-fill',
+        type: 'fill',
+        source: 'hoods',
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': ['coalesce', ['get', 'color'], '#888'],
+          'fill-opacity': [
+            'case',
+            ['boolean', ['feature-state', 'selected'], false], 0.32,
+            0.14
+          ]
+        }
+      }, 'buildings-fill');
+      map.addLayer({
+        id: 'hoods-outline',
+        type: 'line',
+        source: 'hoods',
+        layout: { visibility: 'none' },
+        paint: {
+          'line-color': ['coalesce', ['get', 'color'], '#888'],
+          'line-width': [
+            'case',
+            ['boolean', ['feature-state', 'selected'], false], 2.5,
+            1.2
+          ],
+          'line-opacity': 0.85
+        }
+      }, 'buildings-fill');
+    } catch (e) {
+      console.warn('neighborhoods overlay unavailable', e);
+    }
+
     renderWelcomePanel({ buildingCount: fc.features.length, landmarkCount: LANDMARKS.length });
     document.getElementById('loading').classList.add('loading--hidden');
   } catch (err) {
@@ -263,6 +308,147 @@ compassEl?.addEventListener('click', () => {
   }
 });
 
+// Neighborhoods overlay + side panel.
+const hoodsToggle = document.getElementById('hoods-toggle');
+const hoodsListEl = document.getElementById('hoods-list');
+const hoodsItemsEl = document.getElementById('hoods-list-items');
+let hoodsVisible = false;
+let hoodsData = null;
+let selectedHoodId = null;
+
+// Two independent states: the map overlay (the colored polygons) and the
+// side panel (the list of neighborhoods).
+let hoodsPanelOpen = false;
+
+function setHoodsOverlay(on) {
+  hoodsVisible = on;
+  hoodsToggle?.setAttribute('aria-pressed', String(on));
+  hoodsToggle?.classList.toggle('hoods-toggle--active', on);
+  const v = on ? 'visible' : 'none';
+  if (map.getLayer('hoods-fill')) map.setLayoutProperty('hoods-fill', 'visibility', v);
+  if (map.getLayer('hoods-outline')) map.setLayoutProperty('hoods-outline', 'visibility', v);
+  if (!on) selectHood(null);
+}
+
+function setHoodsPanel(open) {
+  hoodsPanelOpen = open;
+  hoodsListEl?.classList.toggle('hoods-list--hidden', !open);
+}
+
+// The toggle button turns the overlay on/off AND opens the list when turning
+// on, but doesn't force the list closed when turning off (so you can keep the
+// panel open even with overlay off, or vice versa). Closing the panel via the
+// × button leaves the overlay on the map.
+hoodsToggle?.addEventListener('click', () => {
+  const next = !hoodsVisible;
+  setHoodsOverlay(next);
+  if (next) setHoodsPanel(true);
+});
+document.getElementById('hoods-list-close')?.addEventListener('click', () => {
+  setHoodsPanel(false);
+});
+
+// Per-neighborhood visibility set. All on by default.
+const hoodVisibility = new Map();
+
+function buildHoodsList(fc) {
+  hoodsData = fc;
+  for (const f of fc.features) {
+    if (!hoodVisibility.has(f.properties.id)) hoodVisibility.set(f.properties.id, true);
+  }
+  if (!hoodsItemsEl) return;
+  hoodsItemsEl.innerHTML = fc.features.map(f => {
+    const p = f.properties;
+    const on = hoodVisibility.get(p.id);
+    return `<div class="hoods-list__item${on ? ' hoods-list__item--on' : ''}" data-id="${escapeAttr(p.id)}" style="--hood-color:${escapeAttr(p.color)}">
+      <button class="hoods-list__check" data-action="toggle" aria-pressed="${on}" title="Show/hide">
+        <span class="hoods-list__swatch"></span>
+      </button>
+      <button class="hoods-list__name" data-action="select">${escape(p.name)}</button>
+    </div>`;
+  }).join('');
+  hoodsItemsEl.querySelectorAll('.hoods-list__item').forEach(el => {
+    const id = el.dataset.id;
+    el.querySelector('[data-action="toggle"]').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      toggleHoodVisibility(id);
+    });
+    el.querySelector('[data-action="select"]').addEventListener('click', () => {
+      // Auto-enable visibility when picking a hidden hood, so the user can
+      // see what they just selected.
+      if (!hoodVisibility.get(id)) toggleHoodVisibility(id, true);
+      selectHood(id);
+    });
+  });
+  applyHoodFilter();
+}
+
+function applyHoodFilter() {
+  if (!map.getLayer('hoods-fill')) return;
+  // Filter out hoods whose visibility is false.
+  const hiddenIds = [...hoodVisibility.entries()].filter(([, v]) => !v).map(([k]) => k);
+  const filter = hiddenIds.length
+    ? ['!', ['in', ['get', 'id'], ['literal', hiddenIds]]]
+    : null;
+  map.setFilter('hoods-fill', filter);
+  map.setFilter('hoods-outline', filter);
+}
+
+function toggleHoodVisibility(id, force) {
+  const next = typeof force === 'boolean' ? force : !hoodVisibility.get(id);
+  hoodVisibility.set(id, next);
+  const el = hoodsItemsEl?.querySelector(`.hoods-list__item[data-id="${cssEscape(id)}"]`);
+  if (el) {
+    el.classList.toggle('hoods-list__item--on', next);
+    el.querySelector('[data-action="toggle"]')?.setAttribute('aria-pressed', String(next));
+  }
+  // If we just hid the currently selected hood, drop the selection.
+  if (!next && selectedHoodId === id) selectHood(null);
+  applyHoodFilter();
+}
+
+function setAllHoodsVisibility(visible) {
+  for (const id of hoodVisibility.keys()) hoodVisibility.set(id, visible);
+  hoodsItemsEl?.querySelectorAll('.hoods-list__item').forEach(el => {
+    el.classList.toggle('hoods-list__item--on', visible);
+    el.querySelector('[data-action="toggle"]')?.setAttribute('aria-pressed', String(visible));
+  });
+  if (!visible) selectHood(null);
+  applyHoodFilter();
+}
+
+function cssEscape(s) {
+  return String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+}
+
+function escape(s) {
+  return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
+
+function selectHood(id) {
+  // Clear previous selection by feature index.
+  if (selectedHoodId !== null && hoodsData) {
+    const prev = hoodsData.features.find(x => x.properties.id === selectedHoodId);
+    if (prev) {
+      try { map.setFeatureState({ source: 'hoods', id: prev.id }, { selected: false }); } catch {}
+    }
+  }
+  selectedHoodId = id;
+  hoodsItemsEl?.querySelectorAll('.hoods-list__item').forEach(el => {
+    el.classList.toggle('hoods-list__item--active', el.dataset.id === id);
+  });
+  if (id == null || !hoodsData) return;
+  const f = hoodsData.features.find(x => x.properties.id === id);
+  if (!f) return;
+  try { map.setFeatureState({ source: 'hoods', id: f.id }, { selected: true }); } catch {}
+  // Fly to the polygon's center.
+  const c = featureCentroid(f);
+  if (c) map.easeTo({ center: c, zoom: Math.max(map.getZoom(), 14), pitch: 50, duration: 700, offset: [220, 0] });
+  openNeighborhood(f.properties);
+}
+
+function escapeAttr(s) { return String(s).replace(/[&"<>']/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;',"'":'&#39;'}[c])); }
+
 // Single click handler — every building should pop a card.
 // We only treat a click as a "landmark" click when it hits the landmark's
 // GROUND FOOTPRINT (`landmark-fill`). Tower setbacks / spires (`landmark-parts`,
@@ -280,6 +466,8 @@ map.on('click', (e) => {
   }
 
   // 2. Any building under the cursor → its own card.
+  // (Neighborhood overlay does not intercept clicks — interaction is via
+  // the side panel only, so it never gets in the way of building clicks.)
   if (map.getLayer('buildings-fill')) {
     const bld = map.queryRenderedFeatures(e.point, { layers: ['buildings-fill'] });
     if (bld.length) {
@@ -305,7 +493,16 @@ map.on('click', (e) => {
   }
   setSelectedBuilding(null);
 
-  // 4. Truly empty space (water, road, park) — "outside the atlas" card.
+  // 4. Linear features (bridges) are easy to miss with a precise click —
+  // their footprints are thin ribbons. If no building was hit, check whether
+  // the click is within ~250 m of a bridge coord and open that landmark.
+  const near = nearestLandmark(e.lngLat);
+  if (near && near.distKm < 0.25 && near.landmark.id.endsWith('-bridge')) {
+    openLandmark(near.landmark.id);
+    return;
+  }
+
+  // 5. Truly empty space (water, road, park) — "outside the atlas" card.
   renderPanel({ generic: true, notFound: true });
   document.getElementById('panel').classList.remove('panel--hidden');
 });
@@ -559,6 +756,22 @@ function eraFromYear(y) {
   if (y < 1960) return 'artdeco';
   if (y < 2000) return 'modernist';
   return 'contemporary';
+}
+
+function openNeighborhood(props) {
+  setSelectedBuilding(null);
+  selectedLandmarkId = null;
+  if (map.getLayer('landmark-selected')) {
+    map.setFilter('landmark-selected', ['==', ['get', 'id'], '']);
+  }
+  renderPanel({
+    name: props.name,
+    style: 'Neighborhood',
+    year: '—',
+    history: props.blurb,
+    era: props.era || 'beauxarts',
+    isHood: true
+  });
 }
 
 function openLandmark(id) {

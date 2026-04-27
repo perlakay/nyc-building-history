@@ -17,10 +17,6 @@
           <span class="brand__name">NYC Building Atlas</span>
           <span class="brand__sub">skyline stories, block by block</span>
         </div>
-        <div class="chip chip--ok">
-          <span class="chip__dot"></span>
-          <span>Search any NYC address</span>
-        </div>
       </div>
       <div class="topbar__center">
         <div class="search">
@@ -54,6 +50,22 @@
         </button>
       </div>
       <div id="panel-content"></div>
+    </aside>
+
+    <button id="hoods-toggle" class="hoods-toggle" title="Toggle neighborhood overlay" aria-pressed="false">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M2 4 L8 1 L14 4 L14 13 L8 15 L2 13 Z M8 1 L8 15 M2 4 L8 7 L14 4"/>
+      </svg>
+      <span class="hoods-toggle__label">Neighborhoods</span>
+    </button>
+    <aside id="hoods-list" class="hoods-list hoods-list--hidden" aria-label="Neighborhoods">
+      <div class="hoods-list__header">
+        <div class="hoods-list__title">Neighborhoods</div>
+        <button id="hoods-list-close" class="hoods-list__close" aria-label="Close neighborhoods panel">
+          <svg viewBox="0 0 12 12" width="10" height="10"><path d="M1 1 L11 11 M11 1 L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+        </button>
+      </div>
+      <div class="hoods-list__items" id="hoods-list-items"></div>
     </aside>
 
     <div class="legend">
