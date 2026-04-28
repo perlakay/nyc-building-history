@@ -30,7 +30,8 @@ export const ERA_BY_ID = {
   'plaza-hotel': 'beauxarts',
   'carnegie-hall': 'victorian',
   'nypl-main': 'beauxarts',
-  'one-fifth': 'victorian',
+  'washington-square-park': 'victorian',
+  'penn-station': 'modernist',
   'tenement-museum': 'victorian'
 };
 
@@ -38,6 +39,7 @@ export const LANDMARKS = [
   {
     id: 'empire-state',
     name: 'Empire State Building',
+    bin: 1015862,
     coords: [-73.9857, 40.7484],
     year: 1931,
     architect: 'Shreve, Lamb & Harmon',
@@ -50,6 +52,7 @@ export const LANDMARKS = [
   {
     id: 'chrysler',
     name: 'Chrysler Building',
+    bin: 1036156,
     coords: [-73.9754, 40.7516],
     year: 1930,
     architect: 'William Van Alen',
@@ -61,6 +64,7 @@ export const LANDMARKS = [
   },
   {
     id: 'flatiron',
+    bin: 1016278,
     name: 'Flatiron Building',
     coords: [-73.9897, 40.7411],
     year: 1902,
@@ -73,6 +77,7 @@ export const LANDMARKS = [
   },
   {
     id: 'grand-central',
+    bin: 1035381,
     name: 'Grand Central Terminal',
     coords: [-73.9772, 40.7527],
     year: 1913,
@@ -85,6 +90,7 @@ export const LANDMARKS = [
   },
   {
     id: 'woolworth',
+    bin: 1087167,
     name: 'Woolworth Building',
     coords: [-74.0083, 40.7124],
     year: 1913,
@@ -97,6 +103,7 @@ export const LANDMARKS = [
   },
   {
     id: 'rockefeller',
+    bin: 1076262,
     name: '30 Rockefeller Plaza',
     coords: [-73.9787, 40.7587],
     year: 1933,
@@ -109,6 +116,7 @@ export const LANDMARKS = [
   },
   {
     id: 'one-wtc',
+    bin: 1088469,
     name: 'One World Trade Center',
     coords: [-74.0134, 40.7127],
     year: 2014,
@@ -205,6 +213,7 @@ export const LANDMARKS = [
   },
   {
     id: 'guggenheim',
+    bin: 1046946,
     name: 'Solomon R. Guggenheim Museum',
     coords: [-73.9589, 40.7830],
     year: 1959,
@@ -217,6 +226,7 @@ export const LANDMARKS = [
   },
   {
     id: 'met-museum',
+    bin: 1083810,
     name: 'The Metropolitan Museum of Art',
     coords: [-73.9632, 40.7794],
     year: 1880,
@@ -229,6 +239,7 @@ export const LANDMARKS = [
   },
   {
     id: 'moma',
+    bin: 1081128,
     name: 'Museum of Modern Art',
     coords: [-73.9776, 40.7614],
     year: 1939,
@@ -241,6 +252,7 @@ export const LANDMARKS = [
   },
   {
     id: 'seagram',
+    bin: 1036465,
     name: 'Seagram Building',
     coords: [-73.9719, 40.7586],
     year: 1958,
@@ -253,6 +265,7 @@ export const LANDMARKS = [
   },
   {
     id: 'lever-house',
+    bin: 1035732,
     name: 'Lever House',
     coords: [-73.9724, 40.7593],
     year: 1952,
@@ -265,6 +278,7 @@ export const LANDMARKS = [
   },
   {
     id: 'dakota',
+    bin: 1028637,
     name: 'The Dakota',
     coords: [-73.9763, 40.7764],
     year: 1884,
@@ -277,6 +291,7 @@ export const LANDMARKS = [
   },
   {
     id: 'apollo',
+    bin: 1058654,
     name: 'Apollo Theater',
     coords: [-73.9503, 40.8099],
     year: 1914,
@@ -289,9 +304,10 @@ export const LANDMARKS = [
   },
   {
     id: 'st-patricks',
+    bin: 1081149,
     name: 'St. Patrick\'s Cathedral',
     coords: [-73.9760, 40.7585],
-    year: 1878,
+    year: 1879,
     architect: 'James Renwick Jr.',
     style: 'Neo-Gothic',
     height: '100 m (330 ft) spires',
@@ -303,7 +319,7 @@ export const LANDMARKS = [
     id: 'washington-square-arch',
     name: 'Washington Square Arch',
     coords: [-73.9974, 40.7308],
-    year: 1892,
+    year: 1895,
     architect: 'Stanford White',
     style: 'Beaux-Arts / Roman Triumphal',
     height: '23 m (77 ft)',
@@ -325,6 +341,7 @@ export const LANDMARKS = [
   },
   {
     id: 'radio-city',
+    bin: 1083861,
     name: 'Radio City Music Hall',
     coords: [-73.9799, 40.7599],
     year: 1932,
@@ -337,6 +354,7 @@ export const LANDMARKS = [
   },
   {
     id: 'plaza-hotel',
+    bin: 1035253,
     name: 'The Plaza Hotel',
     coords: [-73.9743, 40.7646],
     year: 1907,
@@ -349,6 +367,7 @@ export const LANDMARKS = [
   },
   {
     id: 'carnegie-hall',
+    bin: 1023449,
     name: 'Carnegie Hall',
     coords: [-73.9800, 40.7650],
     year: 1891,
@@ -361,6 +380,7 @@ export const LANDMARKS = [
   },
   {
     id: 'nypl-main',
+    bin: 1034194,
     name: 'New York Public Library (Main Branch)',
     coords: [-73.9822, 40.7532],
     year: 1911,
@@ -372,7 +392,7 @@ export const LANDMARKS = [
     fact: 'The seven-story stack system beneath the reading room was structural: the building\'s floors rest on the steel book-stack frame. When the stacks were moved out for modernization, the building had to be re-engineered.'
   },
   {
-    id: 'one-fifth',
+    id: 'washington-square-park',
     name: 'Washington Square Park',
     coords: [-73.9973, 40.7308],
     year: 1827,
@@ -384,7 +404,20 @@ export const LANDMARKS = [
     fact: 'An estimated 20,000 bodies remain buried under the park. Construction projects routinely unearth skeletons; the last major find was in 2008.'
   },
   {
+    id: 'penn-station',
+    name: 'Penn Station',
+    coords: [-73.9933, 40.7506],
+    year: 1968,
+    architect: 'Charles Luckman (current concourse); McKim, Mead & White (original 1910 head house, demolished 1963–66)',
+    style: 'Beaux-Arts (original) · Modernist concrete (current)',
+    height: 'Underground concourse · MSG above',
+    history: 'Penn Station is the busiest transit hub in the Western Hemisphere, moving over 600,000 passengers a day across Amtrak, NJ Transit, and LIRR. The Penn Station you walk through today (opened 1968) is a low-ceilinged underground concourse beneath Madison Square Garden — built after the Pennsylvania Railroad demolished the original 1910 McKim, Mead & White head house, a Beaux-Arts cathedral modeled on the Baths of Caracalla. The destruction of the original was so traumatic that it directly produced NYC\'s 1965 Landmarks Preservation Law, which is why buildings like Grand Central could not be torn down a few years later. The 2021 Moynihan Train Hall, across the street in the old Farley Post Office, returned a small piece of grand Beaux-Arts railroad architecture to the site.',
+    design: 'The current station is functional rather than ceremonial — most of the public concourse sits one or two stories below grade, beneath the Madison Square Garden arena and the 2 Penn Plaza office tower. The 2021 Moynihan Train Hall (Skidmore, Owings & Merrill) reuses the 1912 Farley Post Office across 8th Avenue and crowns the train shed with a 92-foot skylight, partly compensating for what was lost in 1963.',
+    fact: '"One entered the city like a god; one scuttles in now like a rat," wrote architectural historian Vincent Scully about the original\'s loss. Pieces of the demolished 1910 station were used as landfill in the New Jersey Meadowlands. Several of the surviving stone eagles are now at Hicksville LIRR station and the Market Street Bridge in Cooperstown.'
+  },
+  {
     id: 'tenement-museum',
+    bin: 1005474,
     name: '97 Orchard Street (Tenement Museum)',
     coords: [-73.9905, 40.7189],
     year: 1864,

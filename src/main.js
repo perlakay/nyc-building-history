@@ -108,13 +108,30 @@ async function loadBuildings() {
 // BIN → building feature index. Built once when buildings load so we can
 // snap a search hit to the exact footprint by NYC's authoritative ID.
 const buildingByBin = new Map();
+// BIN → curated correction (overrides DOITT data when DOITT is wrong).
+let buildingOverrides = {};
 
 map.on('load', async () => {
   try {
     const fc = await loadBuildings();
+    // Apply curated corrections — DOITT has known-wrong year/height for some
+    // famous lots (rebuilds where the year reflects a prior structure).
+    try {
+      const ovRes = await fetch('/data/building_overrides.json');
+      buildingOverrides = ovRes.ok ? await ovRes.json() : {};
+    } catch { buildingOverrides = {}; }
     for (const f of fc.features) {
       const bin = f.properties && f.properties.bin;
-      if (bin != null) buildingByBin.set(bin, f);
+      if (bin != null) {
+        buildingByBin.set(bin, f);
+        const ov = buildingOverrides[String(bin)];
+        if (ov) {
+          if (ov.y != null) f.properties.y = ov.y;
+          if (ov.h != null) f.properties.h = ov.h;
+          if (ov.name != null) f.properties.name = ov.name;
+          f.properties.corrected = true;
+        }
+      }
     }
     const lmRes = await fetch('/data/landmark_footprints.geojson');
     const lmFc = await lmRes.json();
@@ -159,10 +176,17 @@ map.on('load', async () => {
     // Real building heights — `h` is in feet from DOITT.
     const HEIGHT_EXPR = ['*', ['get', 'h'], 0.3048];
 
+    // Hide the generic buildings-fill polygon for any BIN that's a curated
+    // landmark — those are drawn by the dedicated landmark-fill layer in their
+    // signature red. Stops the z-fighting / hover-flicker between the two.
+    const landmarkBins = LANDMARKS.map(l => l.bin).filter(b => Number.isFinite(b));
     map.addLayer({
       id: 'buildings-fill',
       type: 'fill-extrusion',
       source: 'buildings',
+      filter: landmarkBins.length
+        ? ['!', ['in', ['get', 'bin'], ['literal', landmarkBins]]]
+        : null,
       paint: {
         'fill-extrusion-color': [
           'case',
@@ -465,12 +489,19 @@ map.on('click', (e) => {
     }
   }
 
-  // 2. Any building under the cursor → its own card.
-  // (Neighborhood overlay does not intercept clicks — interaction is via
-  // the side panel only, so it never gets in the way of building clicks.)
+  // 2. Any building under the cursor → its own card. If the building is a
+  // curated landmark (matched by BIN), open the hand-written landmark card
+  // instead of the parcel record.
   if (map.getLayer('buildings-fill')) {
     const bld = map.queryRenderedFeatures(e.point, { layers: ['buildings-fill'] });
     if (bld.length) {
+      const bin = bld[0].properties.bin;
+      const lm = bin ? LANDMARKS.find(l => l.bin === bin) : null;
+      if (lm) {
+        setSelectedBuilding(null);
+        openLandmark(lm.id);
+        return;
+      }
       setSelectedBuilding(bld[0].id);
       const c = featureCentroid(bld[0]) || [e.lngLat.lng, e.lngLat.lat];
       openGenericAt({ lng: c[0], lat: c[1] }, bld[0].properties);
@@ -621,12 +652,27 @@ async function openGenericAt(lngLat, props = {}, knownAddress = null, opts = {})
 
   const details = await pluto;
   if (details) {
-    const merged = { ...localRecord, ...details };
+    // Trust the BUILDING's own DOITT record (localRecord) for year/height
+    // over PLUTO. PLUTO is parcel-based and the ±50m proximity query can
+    // return a NEIGHBORING lot's year — which is how the displayed year
+    // could end up disagreeing with our local data.
+    const merged = { ...details, ...localRecord };
+    // Bring in PLUTO fields that don't conflict with the building footprint:
+    // address text, owner, units, building class, zoning, historic district.
+    if (details.address) merged.address = details.address;
+    if (details.owner) merged.owner = details.owner;
+    if (details.units) merged.units = details.units;
+    if (details.bldgclass) merged.bldgclass = details.bldgclass;
+    if (details.zone) merged.zone = details.zone;
+    if (details.histdist) merged.histdist = details.histdist;
+    if (details.borough) merged.borough = details.borough;
+    if (details.yearalter1) merged.yearalter1 = details.yearalter1;
+    if (details.yearalter2) merged.yearalter2 = details.yearalter2;
     if (knownAddress) merged.address = knownAddress;
     else if (!merged.address) merged.address = reverseAddr || 'Address unavailable';
     renderPanel({
       generic: true,
-      era: eraFromYear(details.yearbuilt) || localRecord.era,
+      era: localRecord.era,
       address: merged,
       addressLoading: false,
       fromSearch: fuzzyMatch
@@ -848,6 +894,19 @@ createSearch({
     openLandmark(id);
   },
   onPickAddress: async (r) => {
+    // If the searched BIN is a curated landmark, route straight to its
+    // hand-written card instead of the generic parcel record. This is much
+    // more reliable than DOITT data on famous lots (which often have wrong
+    // year/height because the lot was rebuilt).
+    if (r.bin) {
+      const lm = LANDMARKS.find(l => l.bin === r.bin);
+      if (lm) {
+        if (searchMarker) { searchMarker.remove(); searchMarker = null; }
+        setSelectedBuilding(null);
+        openLandmark(lm.id);
+        return;
+      }
+    }
     // Prefer BIN match (NYC's authoritative building id) when Geosearch
     // gives us one — it lands on the exact footprint, no proximity guessing.
     const binFeature = r.bin ? buildingByBin.get(r.bin) : null;

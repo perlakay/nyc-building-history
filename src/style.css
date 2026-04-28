@@ -776,6 +776,11 @@ html, body {
   line-height: 1.55;
   color: var(--ink-3);
 }
+.card__note--warn {
+  background: rgba(216, 162, 58, 0.10);
+  border-color: rgba(216, 162, 58, 0.45);
+  color: var(--gold);
+}
 
 .card__footer {
   margin-top: 28px;

@@ -174,6 +174,13 @@ function renderGeneric(l) {
           primary address per lot, so neighboring buildings on the same parcel
           can share an address even when they're physically distinct.
         </p>` : ''}
+      ${implausible(yearbuilt, a.height) ? `
+        <p class="card__note card__note--warn">
+          The year and height in NYC's records are physically inconsistent
+          (NYC had no skyscrapers before 1890). DOITT sometimes carries the
+          year of a prior building on the lot — the figure you see may not
+          reflect the structure standing today.
+        </p>` : ''}
 
       <div class="card__footer">
         ${footerSource}
@@ -268,6 +275,16 @@ function eraLabel(era) {
     modernist: 'Modernist', victorian: 'Victorian', contemporary: 'Contemporary',
     theatrical: 'Theatrical', unknown: 'Undated'
   })[era] || (era || 'Landmark');
+}
+
+function implausible(year, heightStr) {
+  if (!year || !heightStr) return false;
+  const m = String(heightStr).match(/(\d+(?:\.\d+)?)\s*ft/);
+  if (!m) return false;
+  const h = parseFloat(m[1]);
+  if (year < 1860 && h > 100) return true;
+  if (year < 1890 && h > 250) return true;
+  return false;
 }
 
 function escape(s) {
