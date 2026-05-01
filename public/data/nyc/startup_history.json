@@ -1,0 +1,33 @@
+{
+  "_": "Curated history of notable companies headquartered or founded in specific NYC buildings, keyed by BIN. Multiple entries per building are listed in chronological order.",
+
+  "by_bin": {
+    "1015862": [
+      {
+        "name": "Empire State Inc. (the building's holding company itself)",
+        "founded": 1929,
+        "valuation_usd": "2.3B (Empire State Realty Trust)",
+        "note": "The Empire State Building was famously underleased through the 1930s — nicknamed the 'Empty State Building' — but its observation deck and licensing income kept it solvent. Today the building alone is worth roughly $2 billion."
+      }
+    ],
+    "1036156": [
+      {
+        "name": "Chrysler Corporation (original)",
+        "founded": 1925,
+        "moved_in": 1930,
+        "moved_out": 1953,
+        "valuation_usd": "n/a (private at the time)",
+        "note": "The Chrysler Building was Walter Chrysler's personal investment, not a corporate HQ — he financed it with his own money so his children could inherit it. Chrysler Corp leased and used the upper floors but never owned the building."
+      }
+    ],
+    "1088469": [
+      {
+        "name": "Condé Nast",
+        "founded": 1909,
+        "moved_in": 2014,
+        "valuation_usd": "—",
+        "note": "Condé Nast (Vogue, The New Yorker, GQ) is the anchor tenant at One World Trade Center, occupying floors 20–44 since 2014."
+      }
+    ]
+  }
+}

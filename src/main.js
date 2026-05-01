@@ -1,12 +1,36 @@
 import maplibregl from 'maplibre-gl';
-import { LANDMARKS, ERA_BY_ID } from './landmarks.js';
 import { renderPanel, renderWelcomePanel } from './panel.js';
 import { createSearch } from './search.js';
+
+// City config is set by each entry HTML via window.CITY before this script
+// runs. It tells the engine where to fetch data, the camera framing, the
+// curated landmarks, and the city-specific copy.
+//
+// We resolve CITY at module-execution-time rather than top-level so that if
+// the module gets evaluated before window.CITY is set we throw a clear error
+// rather than silently shipping `undefined` everywhere.
+function resolveCity() {
+  const c = (typeof window !== 'undefined' && window.CITY) || null;
+  if (!c) throw new Error('window.CITY not set — define it in the entry HTML before loading main.js');
+  return c;
+}
+
+const CITY = resolveCity();
+const LANDMARKS = CITY.landmarks;
+const ERA_BY_ID = CITY.eraById;
+const STARTUP_MARKER_COLOR = '#9b5cff';
+const LANDMARK_MARKER_COLOR = '#c43a1f';
+const DATA = (path) => `/data/${CITY.id}/${path}`;
+// Per-city building id — `bin` for NYC, `building_id` for SF, etc. The engine
+// uses this name for index keys, search routing, and de-duping curated lots.
+const ID_FIELD = CITY.idField;
+console.log('[atlas] starting', CITY.id, '— buildings will load from', DATA('buildings.geojson'));
 
 // Dark canvas. CARTO dark-matter (no labels) for streets/water. Labels go
 // BELOW the buildings so they never intercept clicks on building footprints.
 const STYLE = {
   version: 8,
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
   sources: {
     'carto-dark': {
       type: 'raster',
@@ -16,7 +40,7 @@ const STYLE = {
         'https://c.basemaps.cartocdn.com/rastertiles/dark_nolabels/{z}/{x}/{y}.png'
       ],
       tileSize: 256,
-      attribution: '© <a href="https://carto.com/">CARTO</a> · © <a href="https://openstreetmap.org">OpenStreetMap</a> · Buildings © <a href="https://data.cityofnewyork.us/Housing-Development/Building-Footprints/5zhs-2jue">NYC DOITT</a>'
+      attribution: CITY.attribution
     },
     'carto-labels': {
       type: 'raster',
@@ -53,13 +77,13 @@ const STYLE = {
 const map = new maplibregl.Map({
   container: 'map',
   style: STYLE,
-  center: [-73.9857, 40.7484],   // Empire State — dramatic opening framing
-  zoom: 14.6,
-  pitch: 62,
-  bearing: -22,
-  maxBounds: [[-74.30, 40.49], [-73.68, 40.93]],
-  minZoom: 10.8,
-  maxZoom: 18,
+  center: CITY.center,
+  zoom: CITY.zoom,
+  pitch: CITY.pitch,
+  bearing: CITY.bearing,
+  maxBounds: CITY.bounds,
+  minZoom: CITY.minZoom,
+  maxZoom: CITY.maxZoom ?? 18,
   antialias: true
 });
 window.mapDebug = map;
@@ -80,7 +104,7 @@ function setSelectedBuilding(id) {
 
 async function loadBuildings() {
   updateLoading('downloading building footprints…', 5);
-  const res = await fetch('/data/buildings.geojson');
+  const res = await fetch(DATA('buildings.geojson'));
   if (!res.ok) throw new Error('buildings fetch failed');
   const total = parseInt(res.headers.get('content-length') || '0', 10);
   const reader = res.body.getReader();
@@ -110,6 +134,7 @@ async function loadBuildings() {
 const buildingByBin = new Map();
 // BIN → curated correction (overrides DOITT data when DOITT is wrong).
 let buildingOverrides = {};
+let startupHistory = { by_bin: {}, by_building_id: {}, by_mblr: {} };
 
 map.on('load', async () => {
   try {
@@ -117,11 +142,22 @@ map.on('load', async () => {
     // Apply curated corrections — DOITT has known-wrong year/height for some
     // famous lots (rebuilds where the year reflects a prior structure).
     try {
-      const ovRes = await fetch('/data/building_overrides.json');
+      const ovRes = await fetch(DATA('building_overrides.json'));
       buildingOverrides = ovRes.ok ? await ovRes.json() : {};
     } catch { buildingOverrides = {}; }
+    try {
+      const shRes = await fetch(DATA('startup_history.json'));
+      if (shRes.ok) {
+        const sh = await shRes.json();
+        startupHistory = {
+          by_bin: sh.by_bin || {},
+          by_building_id: sh.by_building_id || {},
+          by_mblr: sh.by_mblr || {}
+        };
+      }
+    } catch {}
     for (const f of fc.features) {
-      const bin = f.properties && f.properties.bin;
+      const bin = f.properties && f.properties[ID_FIELD];
       if (bin != null) {
         buildingByBin.set(bin, f);
         const ov = buildingOverrides[String(bin)];
@@ -133,17 +169,19 @@ map.on('load', async () => {
         }
       }
     }
-    const lmRes = await fetch('/data/landmark_footprints.geojson');
+    const lmRes = await fetch(DATA('landmark_footprints.geojson'));
     const lmFc = await lmRes.json();
     // Detailed OSM building parts for landmarks (where available) — gives
     // tower setbacks, spires, etc. Falls back gracefully if the file is empty.
     let partsFc = { type: 'FeatureCollection', features: [] };
     try {
-      const r = await fetch('/data/landmark_parts.geojson');
+      const r = await fetch(DATA('landmark_parts.geojson'));
       if (r.ok) partsFc = await r.json();
     } catch {}
 
     map.addSource('buildings', { type: 'geojson', data: fc, generateId: true });
+    console.log('[atlas] buildings source added,', fc.features.length, 'features');
+    map.on('error', (e) => console.error('[atlas] map error:', e.error?.message || e));
     map.addSource('landmarks-poly', { type: 'geojson', data: lmFc });
     map.addSource('landmark-parts', { type: 'geojson', data: partsFc });
     map.addSource('landmarks-pt', {
@@ -153,7 +191,7 @@ map.on('load', async () => {
         features: LANDMARKS.map(l => ({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: l.coords },
-          properties: { id: l.id, name: l.name }
+          properties: { id: l.id, name: l.name, kind: l.kind || 'landmark' }
         }))
       }
     });
@@ -179,14 +217,14 @@ map.on('load', async () => {
     // Hide the generic buildings-fill polygon for any BIN that's a curated
     // landmark — those are drawn by the dedicated landmark-fill layer in their
     // signature red. Stops the z-fighting / hover-flicker between the two.
-    const landmarkBins = LANDMARKS.map(l => l.bin).filter(b => Number.isFinite(b));
+    const landmarkIds = LANDMARKS.map(l => l[ID_FIELD]).filter(Boolean);
     map.addLayer({
       id: 'buildings-fill',
       type: 'fill-extrusion',
       source: 'buildings',
-      filter: landmarkBins.length
-        ? ['!', ['in', ['get', 'bin'], ['literal', landmarkBins]]]
-        : null,
+      ...(landmarkIds.length
+        ? { filter: ['!', ['in', ['get', ID_FIELD], ['literal', landmarkIds]]] }
+        : {}),
       paint: {
         'fill-extrusion-color': [
           'case',
@@ -245,6 +283,7 @@ map.on('load', async () => {
       id: 'landmark-glow',
       type: 'circle',
       source: 'landmarks-pt',
+      filter: ['!=', ['get', 'kind'], 'startup'],
       paint: {
         'circle-radius': [
           'interpolate', ['linear'], ['zoom'],
@@ -252,7 +291,12 @@ map.on('load', async () => {
           14, 7,
           17, 10
         ],
-        'circle-color': '#c43a1f',
+        'circle-color': [
+          'case',
+          ['==', ['get', 'kind'], 'startup'],
+          STARTUP_MARKER_COLOR,
+          LANDMARK_MARKER_COLOR
+        ],
         'circle-opacity': 0.65,
         'circle-blur': 0.5,
         'circle-stroke-color': '#fffaf0',
@@ -261,52 +305,14 @@ map.on('load', async () => {
       }
     });
 
-    // Neighborhoods overlay (toggleable). Soft outlines + labels — does not
-    // overtake the buildings unless the toggle is on.
-    try {
-      const hoodsRes = await fetch('/data/neighborhoods.geojson');
-      const hoodsFc = await hoodsRes.json();
-      // Source uses array-index ids so feature-state works deterministically.
-      hoodsFc.features.forEach((f, i) => { f.id = i; });
-      buildHoodsList(hoodsFc);
-      map.addSource('hoods', { type: 'geojson', data: hoodsFc });
-      // Color each neighborhood from its own feature property — so the
-      // overlay reads as a map-of-distinct-areas, not one wash of color.
-      // Layer is below buildings-fill so it never covers the towers.
-      map.addLayer({
-        id: 'hoods-fill',
-        type: 'fill',
-        source: 'hoods',
-        layout: { visibility: 'none' },
-        paint: {
-          'fill-color': ['coalesce', ['get', 'color'], '#888'],
-          'fill-opacity': [
-            'case',
-            ['boolean', ['feature-state', 'selected'], false], 0.32,
-            0.14
-          ]
-        }
-      }, 'buildings-fill');
-      map.addLayer({
-        id: 'hoods-outline',
-        type: 'line',
-        source: 'hoods',
-        layout: { visibility: 'none' },
-        paint: {
-          'line-color': ['coalesce', ['get', 'color'], '#888'],
-          'line-width': [
-            'case',
-            ['boolean', ['feature-state', 'selected'], false], 2.5,
-            1.2
-          ],
-          'line-opacity': 0.85
-        }
-      }, 'buildings-fill');
-    } catch (e) {
-      console.warn('neighborhoods overlay unavailable', e);
-    }
+    await addStartupOfficePins();
+    setupStartupToggle();
 
-    renderWelcomePanel({ buildingCount: fc.features.length, landmarkCount: LANDMARKS.length });
+    renderWelcomePanel({
+      buildingCount: fc.features.length,
+      landmarkCount: LANDMARKS.length,
+      cityName: CITY.name
+    });
     document.getElementById('loading').classList.add('loading--hidden');
   } catch (err) {
     console.error(err);
@@ -314,9 +320,156 @@ map.on('load', async () => {
   }
 });
 
+async function addStartupOfficePins() {
+  const startups = LANDMARKS.filter(l => l.kind === 'startup');
+  if (!startups.length) return;
+
+  map.addSource('startup-offices', {
+    type: 'geojson',
+    data: {
+      type: 'FeatureCollection',
+      features: startups.map(l => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: l.coords },
+        properties: {
+          id: l.id,
+          name: l.name,
+          icon: `startup-${l.id}`
+        }
+      }))
+    }
+  });
+
+  await Promise.all(startups.map(async (startup) => {
+    const imageId = `startup-${startup.id}`;
+    if (map.hasImage(imageId)) return;
+    const image = await createStartupIcon(startup);
+    map.addImage(imageId, image, { pixelRatio: 2 });
+  }));
+
+  map.addLayer({
+    id: 'startup-pins',
+    type: 'symbol',
+    source: 'startup-offices',
+    layout: {
+      'icon-image': ['get', 'icon'],
+      'icon-anchor': 'bottom',
+      'icon-size': [
+        'interpolate', ['linear'], ['zoom'],
+        11, 0.72,
+        14, 0.9,
+        17, 1.08
+      ],
+      'icon-allow-overlap': true,
+      'text-field': ['step', ['zoom'], '', 13.2, ['get', 'name']],
+      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+      'text-size': 13,
+      'text-anchor': 'top',
+      'text-offset': [0, 0.35],
+      'text-allow-overlap': false,
+      'text-optional': true
+    },
+    paint: {
+      'text-color': '#fffaf0',
+      'text-halo-color': '#111827',
+      'text-halo-width': 1.8
+    }
+  });
+
+  map.on('click', 'startup-pins', (e) => {
+    const id = e.features?.[0]?.properties?.id;
+    if (!id) return;
+    setSelectedBuilding(null);
+    openLandmark(id);
+  });
+  map.on('mouseenter', 'startup-pins', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'startup-pins', () => { map.getCanvas().style.cursor = ''; });
+}
+
+async function createStartupIcon(startup) {
+  const size = 96;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = 112;
+  const ctx = canvas.getContext('2d');
+  const color = startup.logoColor || STARTUP_MARKER_COLOR;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.shadowColor = 'rgba(13, 10, 25, 0.45)';
+  ctx.shadowBlur = 10;
+  ctx.shadowOffsetY = 5;
+  ctx.beginPath();
+  ctx.arc(48, 44, 33, 0, Math.PI * 2);
+  ctx.fillStyle = '#fffaf0';
+  ctx.fill();
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.arc(48, 44, 30, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+
+  let logo = null;
+  if (startup.logoSrc) {
+    try { logo = await loadLogoImage(startup.logoSrc); } catch {}
+  }
+  if (logo) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(48, 44, 22, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(logo, 27, 23, 42, 42);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = color;
+    ctx.font = '800 22px Inter, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(startup.logoText || startup.name.slice(0, 2), 48, 45);
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(39, 74);
+  ctx.lineTo(57, 74);
+  ctx.lineTo(48, 91);
+  ctx.closePath();
+  ctx.fillStyle = '#fffaf0';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+function loadLogoImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function setupStartupToggle() {
+  const toggle = document.getElementById('startup-toggle');
+  if (!toggle || !map.getLayer('startup-pins')) return;
+  toggle.addEventListener('click', () => {
+    const visible = map.getLayoutProperty('startup-pins', 'visibility') !== 'none';
+    map.setLayoutProperty('startup-pins', 'visibility', visible ? 'none' : 'visible');
+    toggle.classList.toggle('map-toggle--active', !visible);
+    toggle.setAttribute('aria-pressed', String(!visible));
+  });
+}
+
 // Compass — rotate rose based on map bearing, click toggles top-down ↔ 3D.
-const DEFAULT_PITCH = 62;
-const DEFAULT_BEARING = -22;
+const DEFAULT_PITCH = CITY.pitch;
+const DEFAULT_BEARING = CITY.bearing;
 const compassEl = document.getElementById('compass');
 const compassRose = compassEl?.querySelector('#compass-rose');
 function updateCompass() {
@@ -332,153 +485,23 @@ compassEl?.addEventListener('click', () => {
   }
 });
 
-// Neighborhoods overlay + side panel.
-const hoodsToggle = document.getElementById('hoods-toggle');
-const hoodsListEl = document.getElementById('hoods-list');
-const hoodsItemsEl = document.getElementById('hoods-list-items');
-let hoodsVisible = false;
-let hoodsData = null;
-let selectedHoodId = null;
-
-// Two independent states: the map overlay (the colored polygons) and the
-// side panel (the list of neighborhoods).
-let hoodsPanelOpen = false;
-
-function setHoodsOverlay(on) {
-  hoodsVisible = on;
-  hoodsToggle?.setAttribute('aria-pressed', String(on));
-  hoodsToggle?.classList.toggle('hoods-toggle--active', on);
-  const v = on ? 'visible' : 'none';
-  if (map.getLayer('hoods-fill')) map.setLayoutProperty('hoods-fill', 'visibility', v);
-  if (map.getLayer('hoods-outline')) map.setLayoutProperty('hoods-outline', 'visibility', v);
-  if (!on) selectHood(null);
-}
-
-function setHoodsPanel(open) {
-  hoodsPanelOpen = open;
-  hoodsListEl?.classList.toggle('hoods-list--hidden', !open);
-}
-
-// The toggle button turns the overlay on/off AND opens the list when turning
-// on, but doesn't force the list closed when turning off (so you can keep the
-// panel open even with overlay off, or vice versa). Closing the panel via the
-// × button leaves the overlay on the map.
-hoodsToggle?.addEventListener('click', () => {
-  const next = !hoodsVisible;
-  setHoodsOverlay(next);
-  if (next) setHoodsPanel(true);
-});
-document.getElementById('hoods-list-close')?.addEventListener('click', () => {
-  setHoodsPanel(false);
-});
-
-// Per-neighborhood visibility set. All on by default.
-const hoodVisibility = new Map();
-
-function buildHoodsList(fc) {
-  hoodsData = fc;
-  for (const f of fc.features) {
-    if (!hoodVisibility.has(f.properties.id)) hoodVisibility.set(f.properties.id, true);
-  }
-  if (!hoodsItemsEl) return;
-  hoodsItemsEl.innerHTML = fc.features.map(f => {
-    const p = f.properties;
-    const on = hoodVisibility.get(p.id);
-    return `<div class="hoods-list__item${on ? ' hoods-list__item--on' : ''}" data-id="${escapeAttr(p.id)}" style="--hood-color:${escapeAttr(p.color)}">
-      <button class="hoods-list__check" data-action="toggle" aria-pressed="${on}" title="Show/hide">
-        <span class="hoods-list__swatch"></span>
-      </button>
-      <button class="hoods-list__name" data-action="select">${escape(p.name)}</button>
-    </div>`;
-  }).join('');
-  hoodsItemsEl.querySelectorAll('.hoods-list__item').forEach(el => {
-    const id = el.dataset.id;
-    el.querySelector('[data-action="toggle"]').addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      toggleHoodVisibility(id);
-    });
-    el.querySelector('[data-action="select"]').addEventListener('click', () => {
-      // Auto-enable visibility when picking a hidden hood, so the user can
-      // see what they just selected.
-      if (!hoodVisibility.get(id)) toggleHoodVisibility(id, true);
-      selectHood(id);
-    });
-  });
-  applyHoodFilter();
-}
-
-function applyHoodFilter() {
-  if (!map.getLayer('hoods-fill')) return;
-  // Filter out hoods whose visibility is false.
-  const hiddenIds = [...hoodVisibility.entries()].filter(([, v]) => !v).map(([k]) => k);
-  const filter = hiddenIds.length
-    ? ['!', ['in', ['get', 'id'], ['literal', hiddenIds]]]
-    : null;
-  map.setFilter('hoods-fill', filter);
-  map.setFilter('hoods-outline', filter);
-}
-
-function toggleHoodVisibility(id, force) {
-  const next = typeof force === 'boolean' ? force : !hoodVisibility.get(id);
-  hoodVisibility.set(id, next);
-  const el = hoodsItemsEl?.querySelector(`.hoods-list__item[data-id="${cssEscape(id)}"]`);
-  if (el) {
-    el.classList.toggle('hoods-list__item--on', next);
-    el.querySelector('[data-action="toggle"]')?.setAttribute('aria-pressed', String(next));
-  }
-  // If we just hid the currently selected hood, drop the selection.
-  if (!next && selectedHoodId === id) selectHood(null);
-  applyHoodFilter();
-}
-
-function setAllHoodsVisibility(visible) {
-  for (const id of hoodVisibility.keys()) hoodVisibility.set(id, visible);
-  hoodsItemsEl?.querySelectorAll('.hoods-list__item').forEach(el => {
-    el.classList.toggle('hoods-list__item--on', visible);
-    el.querySelector('[data-action="toggle"]')?.setAttribute('aria-pressed', String(visible));
-  });
-  if (!visible) selectHood(null);
-  applyHoodFilter();
-}
-
-function cssEscape(s) {
-  return String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
-}
-
-function escape(s) {
-  return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-}
-
-function selectHood(id) {
-  // Clear previous selection by feature index.
-  if (selectedHoodId !== null && hoodsData) {
-    const prev = hoodsData.features.find(x => x.properties.id === selectedHoodId);
-    if (prev) {
-      try { map.setFeatureState({ source: 'hoods', id: prev.id }, { selected: false }); } catch {}
-    }
-  }
-  selectedHoodId = id;
-  hoodsItemsEl?.querySelectorAll('.hoods-list__item').forEach(el => {
-    el.classList.toggle('hoods-list__item--active', el.dataset.id === id);
-  });
-  if (id == null || !hoodsData) return;
-  const f = hoodsData.features.find(x => x.properties.id === id);
-  if (!f) return;
-  try { map.setFeatureState({ source: 'hoods', id: f.id }, { selected: true }); } catch {}
-  // Fly to the polygon's center.
-  const c = featureCentroid(f);
-  if (c) map.easeTo({ center: c, zoom: Math.max(map.getZoom(), 14), pitch: 50, duration: 700, offset: [220, 0] });
-  openNeighborhood(f.properties);
-}
-
-function escapeAttr(s) { return String(s).replace(/[&"<>']/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;',"'":'&#39;'}[c])); }
-
 // Single click handler — every building should pop a card.
 // We only treat a click as a "landmark" click when it hits the landmark's
 // GROUND FOOTPRINT (`landmark-fill`). Tower setbacks / spires (`landmark-parts`,
 // which sit high in the air with `min_h_m > 0`) are excluded — otherwise they
 // hijack clicks on adjacent buildings whose pixels happen to sit under a spire.
 map.on('click', (e) => {
+  // 0. Startup office pin? These sit visually above buildings and should win
+  // the click target even when a building footprint is directly underneath.
+  if (map.getLayer('startup-pins') && map.getLayoutProperty('startup-pins', 'visibility') !== 'none') {
+    const startup = map.queryRenderedFeatures(e.point, { layers: ['startup-pins'] });
+    if (startup.length && startup[0].properties.id) {
+      setSelectedBuilding(null);
+      openLandmark(startup[0].properties.id);
+      return;
+    }
+  }
+
   // 1. Landmark ground-footprint hit?
   if (map.getLayer('landmark-fill')) {
     const lm = map.queryRenderedFeatures(e.point, { layers: ['landmark-fill'] });
@@ -489,14 +512,25 @@ map.on('click', (e) => {
     }
   }
 
+  // Landmark point markers are intentionally small and always visible. They
+  // make off-footprint places like bridges and startup offices easy to open.
+  if (map.getLayer('landmark-glow')) {
+    const marker = map.queryRenderedFeatures(e.point, { layers: ['landmark-glow'] });
+    if (marker.length && marker[0].properties.id) {
+      setSelectedBuilding(null);
+      openLandmark(marker[0].properties.id);
+      return;
+    }
+  }
+
   // 2. Any building under the cursor → its own card. If the building is a
   // curated landmark (matched by BIN), open the hand-written landmark card
   // instead of the parcel record.
   if (map.getLayer('buildings-fill')) {
     const bld = map.queryRenderedFeatures(e.point, { layers: ['buildings-fill'] });
     if (bld.length) {
-      const bin = bld[0].properties.bin;
-      const lm = bin ? LANDMARKS.find(l => l.bin === bin) : null;
+      const idVal = bld[0].properties[ID_FIELD];
+      const lm = idVal ? LANDMARKS.find(l => l[ID_FIELD] === idVal) : null;
       if (lm) {
         setSelectedBuilding(null);
         openLandmark(lm.id);
@@ -534,7 +568,7 @@ map.on('click', (e) => {
   }
 
   // 5. Truly empty space (water, road, park) — "outside the atlas" card.
-  renderPanel({ generic: true, notFound: true });
+  renderPanel({ generic: true, notFound: true, cityName: CITY.name });
   document.getElementById('panel').classList.remove('panel--hidden');
 });
 
@@ -629,28 +663,32 @@ async function openGenericAt(lngLat, props = {}, knownAddress = null, opts = {})
     address: { ...localRecord, address: initialAddress },
     localOnly: true,
     addressLoading: !knownAddress,
-    fromSearch: fuzzyMatch
+    fromSearch: fuzzyMatch,
+    cityName: CITY.name,
+    sources: CITY.sources
   });
   document.getElementById('panel').classList.remove('panel--hidden');
 
-  const pluto = fetchAddress(lngLat.lng, lngLat.lat).catch(() => null);
+  const parcelDetails = fetchAddress(lngLat.lng, lngLat.lat).catch(() => null);
   const reversePromise = knownAddress ? Promise.resolve(knownAddress) : reverseGeocode(lngLat.lng, lngLat.lat);
 
   const reverseAddr = await reversePromise;
-  const plutoSettled = await Promise.race([pluto, new Promise(r => setTimeout(() => r('pending'), 0))]);
+  const parcelSettled = await Promise.race([parcelDetails, new Promise(r => setTimeout(() => r('pending'), 0))]);
 
-  if (plutoSettled === 'pending' && reverseAddr && !knownAddress) {
+  if (parcelSettled === 'pending' && reverseAddr && !knownAddress) {
     renderPanel({
       generic: true,
       era: localRecord.era,
       address: { ...localRecord, address: reverseAddr },
       localOnly: true,
       addressLoading: true,
-      fromSearch: fuzzyMatch
+      fromSearch: fuzzyMatch,
+      cityName: CITY.name,
+      sources: CITY.sources
     });
   }
 
-  const details = await pluto;
+  const details = await parcelDetails;
   if (details) {
     // Trust the BUILDING's own DOITT record (localRecord) for year/height
     // over PLUTO. PLUTO is parcel-based and the ±50m proximity query can
@@ -675,7 +713,9 @@ async function openGenericAt(lngLat, props = {}, knownAddress = null, opts = {})
       era: localRecord.era,
       address: merged,
       addressLoading: false,
-      fromSearch: fuzzyMatch
+      fromSearch: fuzzyMatch,
+      cityName: CITY.name,
+      sources: CITY.sources
     });
   } else {
     renderPanel({
@@ -684,12 +724,15 @@ async function openGenericAt(lngLat, props = {}, knownAddress = null, opts = {})
       address: { ...localRecord, address: knownAddress || reverseAddr || 'Address unavailable' },
       localOnly: true,
       addressLoading: false,
-      fromSearch: fuzzyMatch
+      fromSearch: fuzzyMatch,
+      cityName: CITY.name,
+      sources: CITY.sources
     });
   }
 }
 
 async function fetchAddress(lng, lat) {
+  if (CITY.fetchAddress) return CITY.fetchAddress(lng, lat);
   const d = 0.0005;
   const where = [
     `latitude between ${lat - d} and ${lat + d}`,
@@ -730,6 +773,7 @@ function buildLocalRecord(lngLat, props = {}) {
   const heightM = heightFt ? Math.round(heightFt * 0.3048) : null;
   const estFloors = heightFt ? Math.max(1, Math.round(heightFt / 12)) : null;
   const era = eraFromYear(yearbuilt);
+  const startups = lookupStartupHistory(props);
 
   return {
     address: null,            // resolved async — see openGenericAt
@@ -741,13 +785,29 @@ function buildLocalRecord(lngLat, props = {}) {
     styleHint: architecturalEra(yearbuilt),
     zone: null,
     histdist: null,
-    era
+    era,
+    startups
   };
+}
+
+// Curated startup history lookup. NYC keys by BIN; SF keys by building_id or
+// (more commonly) by mblr (block-lot id) since SF's block-lot is the natural
+// "this is the building" identifier for famous HQs.
+function lookupStartupHistory(props) {
+  if (!props) return null;
+  const bin = props.bin;
+  if (bin && startupHistory.by_bin[String(bin)]) return startupHistory.by_bin[String(bin)];
+  const bid = props.building_id;
+  if (bid && startupHistory.by_building_id[String(bid)]) return startupHistory.by_building_id[String(bid)];
+  const mblr = props.mblr;
+  if (mblr && startupHistory.by_mblr[String(mblr)]) return startupHistory.by_mblr[String(mblr)];
+  return null;
 }
 
 // Reverse-geocode via NYC Geosearch (same free API as the search bar).
 // Returns the closest street address or null.
 async function reverseGeocode(lng, lat) {
+  if (CITY.reverseGeocoder) return CITY.reverseGeocoder(lng, lat);
   try {
     const url = `https://geosearch.planninglabs.nyc/v2/reverse?point.lon=${lng}&point.lat=${lat}&size=1`;
     const res = await fetch(url);
@@ -804,22 +864,6 @@ function eraFromYear(y) {
   return 'contemporary';
 }
 
-function openNeighborhood(props) {
-  setSelectedBuilding(null);
-  selectedLandmarkId = null;
-  if (map.getLayer('landmark-selected')) {
-    map.setFilter('landmark-selected', ['==', ['get', 'id'], '']);
-  }
-  renderPanel({
-    name: props.name,
-    style: 'Neighborhood',
-    year: '—',
-    history: props.blurb,
-    era: props.era || 'beauxarts',
-    isHood: true
-  });
-}
-
 function openLandmark(id) {
   const landmark = LANDMARKS.find(l => l.id === id);
   if (!landmark) return;
@@ -828,7 +872,7 @@ function openLandmark(id) {
     map.setFilter('landmark-selected', ['==', ['get', 'id'], id]);
   }
   const era = ERA_BY_ID[landmark.id] || 'beauxarts';
-  renderPanel({ ...landmark, era });
+  renderPanel({ ...landmark, era, sourceFooter: CITY.sources?.landmarks });
   // Move just enough to frame the landmark next to the panel. If the user is
   // already close, keep their zoom (don't overshoot); only nudge in when far.
   const currentZoom = map.getZoom();
@@ -886,20 +930,24 @@ function escapeText(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function escapeAttr(s) {
+  return escapeText(s).replace(/"/g, '&quot;');
+}
+
 createSearch({
   landmarks: LANDMARKS,
+  geocoder: CITY.geocoder,
+  cityName: CITY.name,
   onPickLandmark: (id) => {
     if (searchMarker) { searchMarker.remove(); searchMarker = null; }
     setSelectedBuilding(null);
     openLandmark(id);
   },
   onPickAddress: async (r) => {
-    // If the searched BIN is a curated landmark, route straight to its
-    // hand-written card instead of the generic parcel record. This is much
-    // more reliable than DOITT data on famous lots (which often have wrong
-    // year/height because the lot was rebuilt).
-    if (r.bin) {
-      const lm = LANDMARKS.find(l => l.bin === r.bin);
+    // r.idValue is the city's authoritative building id (BIN for NYC,
+    // building_id for SF, etc.) returned by the geocoder when available.
+    if (r.idValue != null) {
+      const lm = LANDMARKS.find(l => l[ID_FIELD] === r.idValue);
       if (lm) {
         if (searchMarker) { searchMarker.remove(); searchMarker = null; }
         setSelectedBuilding(null);
@@ -907,27 +955,24 @@ createSearch({
         return;
       }
     }
-    // Prefer BIN match (NYC's authoritative building id) when Geosearch
-    // gives us one — it lands on the exact footprint, no proximity guessing.
-    const binFeature = r.bin ? buildingByBin.get(r.bin) : null;
-    if (binFeature) {
-      const c = featureCentroid(binFeature) || r.coords;
+    // Prefer authoritative-id match when the geocoder gives us one — it lands
+    // on the exact footprint with no proximity guessing.
+    const idFeature = r.idValue != null ? buildingByBin.get(r.idValue) : null;
+    if (idFeature) {
+      const c = featureCentroid(idFeature) || r.coords;
       map.easeTo({ center: c, zoom: Math.max(map.getZoom(), 17), pitch: Math.max(map.getPitch(), 45), duration: 900, offset: [220, 0] });
       placeSearchMarker(c[0], c[1], r.label);
-      // Grab the rendered feature's id at the centroid so feature-state
-      // shading lights up the exact footprint (id source = MapLibre's
-      // internal generated id, which we can't predict from BIN alone).
       map.once('idle', () => {
         const pt = map.project(c);
         const feats = map.queryRenderedFeatures(pt, { layers: ['buildings-fill'] });
-        const matched = feats.find(f => f.properties && f.properties.bin === r.bin) || feats[0];
+        const matched = feats.find(f => f.properties && f.properties[ID_FIELD] === r.idValue) || feats[0];
         if (matched) setSelectedBuilding(matched.id);
       });
-      openGenericAt({ lng: c[0], lat: c[1] }, binFeature.properties, r.label, { exactMatch: true });
+      openGenericAt({ lng: c[0], lat: c[1] }, idFeature.properties, r.label, { exactMatch: true });
       return;
     }
 
-    // No BIN (rare, e.g. an intersection or place result) → centroid snap.
+    // No id (rare, e.g. an intersection or place result) → centroid snap.
     const [lng, lat] = r.coords;
     map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 17), pitch: Math.max(map.getPitch(), 45), duration: 900, offset: [220, 0] });
     map.once('idle', () => {

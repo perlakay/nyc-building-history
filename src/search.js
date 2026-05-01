@@ -1,11 +1,12 @@
-// Address + landmark search.
-// 1. Matches against landmark names (instant, local)
-// 2. Queries NYC's free geosearch API for addresses (no key)
-//    https://geosearch.planninglabs.nyc/ — maintained by NYC Department of City Planning
+// Address + landmark search. Two phases:
+//   1. Match against curated landmark names locally (instant).
+//   2. Hit the city's geocoder for addresses (city-specific endpoint, no key).
+//
+// `geocoder` is provided by the per-city config so we can swap NYC Geosearch
+// for a SF-aware geocoder (e.g. Nominatim filtered to SF) without forking
+// this file.
 
-const GEOSEARCH = 'https://geosearch.planninglabs.nyc/v2/search';
-
-export function createSearch({ landmarks, onPickLandmark, onPickAddress, onClear }) {
+export function createSearch({ landmarks, geocoder, cityName = 'New York City', onPickLandmark, onPickAddress, onClear }) {
   const input = document.getElementById('search-input');
   const clear = document.getElementById('search-clear');
   const wrap = input.closest('.search');
@@ -38,7 +39,7 @@ export function createSearch({ landmarks, onPickLandmark, onPickAddress, onClear
           <div class="search-result" data-i="${i}">
             <div class="search-result__label">ADDRESS</div>
             <div class="search-result__title">${escape(r.label)}</div>
-            <div class="search-result__sub">${escape(r.borough || 'New York City')}</div>
+            <div class="search-result__sub">${escape(r.borough || cityName)}</div>
           </div>`;
       }
       if (r.kind === 'empty') {
@@ -97,27 +98,7 @@ export function createSearch({ landmarks, onPickLandmark, onPickAddress, onClear
     render(lmMatches.length ? lmMatches : [{ kind: 'empty', message: 'searching addresses…' }]);
 
     try {
-      const url = `${GEOSEARCH}?text=${encodeURIComponent(q)}&focus.point.lat=40.7128&focus.point.lon=-74.006&boundary.rect.min_lat=40.49&boundary.rect.max_lat=40.93&boundary.rect.min_lon=-74.30&boundary.rect.max_lon=-73.68&size=8`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('geosearch ' + res.status);
-      const data = await res.json();
-      const addrMatches = (data.features || [])
-        .slice(0, 6)
-        .map(f => {
-          // Geosearch puts BIN/BBL in addendum.pad — that's the city's
-          // authoritative building identifier. We pass it through so the map
-          // can match by BIN against our footprint dataset.
-          const bin = f.properties.addendum?.pad?.bin;
-          return {
-            kind: 'address',
-            label: f.properties.label || f.properties.name,
-            borough: [f.properties.borough, f.properties.locality].filter(Boolean).join(', ') || 'New York City',
-            coords: f.geometry.coordinates,
-            bin: bin ? parseInt(bin, 10) : null,
-            name: f.properties.label
-          };
-        });
-
+      const addrMatches = (await geocoder(q)).slice(0, 6);
       const combined = [...lmMatches, ...addrMatches];
       if (!combined.length) {
         render([{ kind: 'empty', message: 'no results' }]);

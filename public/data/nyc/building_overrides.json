@@ -1,0 +1,29 @@
+{
+  "_": "BIN-keyed corrections for known-wrong DOITT records. Each entry can override y (year built), h (height in feet), and/or name. `note` explains why we override.",
+
+  "1015862": { "y": 1931, "h": 1454, "name": "Empire State Building", "note": "DOITT 1238 ft to roof; 1454 ft to antenna tip." },
+  "1036156": { "y": 1930, "h": 1046, "name": "Chrysler Building", "note": "DOITT 947 ft to roof; 1046 ft to spire tip." },
+  "1016278": { "y": 1902, "h": 285, "name": "Flatiron Building", "note": "Confirmed BIN via Geosearch (175 5 Ave)." },
+  "1087167": { "y": 1913, "h": 792, "name": "Woolworth Building", "note": "DOITT 780 ft / year 1913 — real height 792 ft to tip." },
+  "1023728": { "y": 2015, "h": 1396, "name": "432 Park Avenue", "note": "DOITT records 1924 / 1428 ft from prior lot building. 432 Park completed 2015 at 1396 ft." },
+  "1088469": { "y": 2014, "h": 1776, "name": "One World Trade Center", "note": "Opened Nov 2014. 1776 ft to spire tip." },
+  "1090825": { "y": 2020, "h": 1550, "name": "Central Park Tower", "note": "Tallest residential building in the world." },
+  "1088817": { "y": 2019, "h": 1428, "name": "111 West 57th Street (Steinway Tower)", "note": "Slimmest skyscraper in the world by aspect ratio." },
+  "1088961": { "y": 2020, "h": 1401, "name": "One Vanderbilt", "note": "1401 ft including spire." },
+
+  "1023449": { "y": 1891, "h": 165, "name": "Carnegie Hall", "note": "Confirmed BIN via Geosearch (881 7 Ave). Adjacent Carnegie Hall Tower (BIN 1084455) is a separate 1988 building." },
+  "1035381": { "y": 1913, "h": 150, "name": "Grand Central Terminal", "note": "Opened Feb 2, 1913." },
+  "1076262": { "y": 1933, "h": 850, "name": "30 Rockefeller Plaza", "note": "Real height 850 ft (RCA / Comcast Building)." },
+  "1083861": { "y": 1932, "h": 144, "name": "Radio City Music Hall", "note": "Opened Dec 1932." },
+  "1046946": { "y": 1959, "h": 92, "name": "Solomon R. Guggenheim Museum", "note": "Frank Lloyd Wright, 1959. DOITT records 1961." },
+  "1083810": { "y": 1880, "h": 95, "name": "Metropolitan Museum of Art", "note": "First section opened 1880; current Beaux-Arts facade 1902." },
+  "1081128": { "y": 1939, "h": 165, "name": "Museum of Modern Art", "note": "53rd Street building 1939; Taniguchi expansion 2004." },
+  "1036465": { "y": 1958, "h": 515, "name": "Seagram Building", "note": "Mies van der Rohe, 1958." },
+  "1035732": { "y": 1952, "h": 307, "name": "Lever House", "note": "SOM, 1952." },
+  "1058654": { "y": 1914, "h": 80, "name": "Apollo Theater", "note": "Opened to general audiences 1914 (formerly Hurtig & Seamon's)." },
+  "1081149": { "y": 1879, "h": 330, "name": "St. Patrick's Cathedral", "note": "Dedicated May 1879. Spires 330 ft." },
+  "1035253": { "y": 1907, "h": 250, "name": "The Plaza Hotel", "note": "Opened Oct 1907." },
+  "1034194": { "y": 1911, "h": 90, "name": "New York Public Library (Stephen A. Schwarzman Building)", "note": "Opened May 1911." },
+  "1005474": { "y": 1864, "h": 56, "name": "97 Orchard Street (Tenement Museum)", "note": "Built 1863–1864, sealed in 1935." },
+  "1028637": { "y": 1884, "h": 167, "name": "The Dakota", "note": "Confirmed via 1 W 72nd." }
+}

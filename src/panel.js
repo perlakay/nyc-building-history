@@ -1,21 +1,21 @@
 const panel = () => document.getElementById('panel');
 const content = () => document.getElementById('panel-content');
 
-export function renderWelcomePanel({ buildingCount, landmarkCount }) {
+export function renderWelcomePanel({ buildingCount, landmarkCount, cityName = 'NYC' }) {
   panel().className = 'panel card card--beauxarts';
 
   content().innerHTML = `
     <div class="card__body card__body--welcome">
-      <div class="card__eyebrow">NYC Building Atlas</div>
+      <div class="card__eyebrow">${escape(cityName)} Building Atlas</div>
       <h1 class="card__title">Read the city through its skyline.</h1>
       <p class="card__lede">
-        Search any address, click a building in the 3D map, or use the skyline ribbon to jump into curated landmark stories across New York.
+        Search any address, click a building in the 3D map, or use the skyline ribbon to jump into curated landmark stories across ${escape(cityName)}.
       </p>
 
       <dl class="card__meta">
         ${row('Buildings in view', Number(buildingCount || 0).toLocaleString())}
         ${row('Curated landmarks', Number(landmarkCount || 0).toLocaleString())}
-        ${row('Coverage', 'NYC address search + skyline stories')}
+        ${row('Coverage', `${escape(cityName)} address search + skyline stories`)}
       </dl>
 
       <section class="card__section">
@@ -47,13 +47,13 @@ export function renderPanel(l) {
     <div class="card__body">
       <div class="card__eyebrow">${escape((l.style || 'Landmark').toUpperCase())}</div>
       <h1 class="card__title">${escape(l.name)}</h1>
-      ${l.isHood ? '' : `<div class="card__year-line">Built ${escape(String(l.year))}</div>`}
+      <div class="card__year-line">Built ${escape(String(l.year))}</div>
 
-      ${l.isHood ? '' : `<dl class="card__meta">
+      <dl class="card__meta">
         ${l.architect ? `<div><dt>Architect</dt><dd>${escape(l.architect)}</dd></div>` : ''}
         ${l.height ? `<div><dt>Size</dt><dd>${escape(l.height)}</dd></div>` : ''}
         ${row('Era', eraLabel(l.era))}
-      </dl>`}
+      </dl>
 
       ${l.history ? `
         <section class="card__section">
@@ -74,7 +74,7 @@ export function renderPanel(l) {
         </aside>` : ''}
 
       <div class="card__footer">
-        Story curated · building data via <a href="https://data.cityofnewyork.us/" target="_blank">NYC Open Data</a>
+        ${l.sourceFooter || 'Story curated · building data via city open data'}
       </div>
     </div>
   `;
@@ -86,12 +86,14 @@ function renderGeneric(l) {
   const a = l.address || {};
   const yearbuilt = a.yearbuilt && a.yearbuilt > 1700 ? a.yearbuilt : null;
   const era = l.era || eraFromYear(yearbuilt);
+  const cityName = l.cityName || 'NYC';
+  const sources = l.sources || {};
 
   panel().className = `panel card card--${era || 'unknown'}`;
 
   const footerSource = l.localOnly
-    ? 'Source · NYC building footprints (DOITT)'
-    : 'Source · NYC building footprints + <a href="https://data.cityofnewyork.us/City-Government/MapPLUTO/f888-ni5f" target="_blank">MapPLUTO</a>';
+    ? (sources.local || `Source · ${escape(cityName)} building footprints`)
+    : (sources.parcel || `Source · ${escape(cityName)} building footprints + parcel records`);
 
   if (l.notFound) {
     content().innerHTML = `
@@ -128,7 +130,7 @@ function renderGeneric(l) {
   // Did-you-know fact — synthesized from what we know.
   const fact = synthesizeFact(yearbuilt, a);
 
-  const titleText = a.address || 'Unlisted address';
+  const titleText = compactTitle(a.address) || 'Unlisted address';
   const titleClass = l.addressLoading ? 'card__title card__title--loading' : 'card__title';
 
   content().innerHTML = `
@@ -140,7 +142,6 @@ function renderGeneric(l) {
       <dl class="card__meta">
         ${row('Built', yearbuilt ? String(yearbuilt) : '—')}
         ${a.height ? row('Height', a.height + (a.heightMeters ? ` · ${a.heightMeters}` : '')) : ''}
-        ${a.floors ? row('Floors', String(a.floors)) : ''}
         ${a.borough ? row('Borough', boroughLabel(a.borough)) : ''}
       </dl>
 
@@ -154,6 +155,24 @@ function renderGeneric(l) {
         <section class="card__section">
           <h2>Design notes</h2>
           <p>${designBits.map(escape).join(' ')}</p>
+        </section>` : ''}
+
+      ${a.startups && a.startups.length ? `
+        <section class="card__section">
+          <h2>Companies &amp; startups</h2>
+          <ul class="card__startups">
+            ${a.startups.map(s => `
+              <li class="card__startup">
+                <div class="card__startup-head">
+                  <span class="card__startup-name">${escape(s.name)}</span>
+                  ${s.valuation_usd ? `<span class="card__startup-val">$${escape(s.valuation_usd)}</span>` : ''}
+                </div>
+                <div class="card__startup-meta">
+                  ${s.founded ? `Founded ${s.founded}` : ''}${s.moved_in ? ` · here ${s.moved_in}${s.moved_out ? '–' + s.moved_out : '–present'}` : ''}
+                </div>
+                ${s.note ? `<p class="card__startup-note">${escape(s.note)}</p>` : ''}
+              </li>`).join('')}
+          </ul>
         </section>` : ''}
 
       ${fact ? `
@@ -170,16 +189,16 @@ function renderGeneric(l) {
         </p>` : ''}
       ${(!l.fromSearch && !l.notFound) ? `
         <p class="card__note">
-          Address is reverse-geocoded from the click point. NYC assigns one
+          Address is reverse-geocoded from the click point. ${escape(cityName)} assigns one
           primary address per lot, so neighboring buildings on the same parcel
           can share an address even when they're physically distinct.
         </p>` : ''}
       ${implausible(yearbuilt, a.height) ? `
         <p class="card__note card__note--warn">
-          The year and height in NYC's records are physically inconsistent
-          (NYC had no skyscrapers before 1890). DOITT sometimes carries the
-          year of a prior building on the lot — the figure you see may not
-          reflect the structure standing today.
+          The year and height in the city's records are physically
+          inconsistent (no skyscrapers before 1890). The city often carries
+          the year of a prior building on the lot — the figure you see may
+          not reflect the structure standing today.
         </p>` : ''}
 
       <div class="card__footer">
@@ -204,6 +223,16 @@ function synthesizeFact(year, a) {
 
 function row(k, v) {
   return `<div><dt>${escape(k)}</dt><dd>${escape(v)}</dd></div>`;
+}
+
+function compactTitle(value) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  const parts = s.split(',').map(p => p.trim()).filter(Boolean);
+  if (parts.length <= 2) return s;
+  const cityWords = /^(San Francisco|California|United States|\d{5}(?:-\d{4})?)$/i;
+  const useful = parts.filter(p => !cityWords.test(p));
+  return useful.slice(0, 2).join(', ') || parts.slice(0, 2).join(', ');
 }
 
 function eraFromYear(y) {
@@ -273,7 +302,7 @@ function eraLabel(era) {
   return ({
     artdeco: 'Art Deco', beauxarts: 'Beaux-Arts', gothic: 'Neo-Gothic',
     modernist: 'Modernist', victorian: 'Victorian', contemporary: 'Contemporary',
-    theatrical: 'Theatrical', unknown: 'Undated'
+    theatrical: 'Theatrical', startup: 'Startup Office', unknown: 'Undated'
   })[era] || (era || 'Landmark');
 }
 

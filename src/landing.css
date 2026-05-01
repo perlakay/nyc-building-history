@@ -1,0 +1,220 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap');
+
+:root {
+  --bg: #0d111a;
+  --panel: #151c2b;
+  --panel-2: #1b2538;
+  --ink: #f7f2e8;
+  --muted: #aeb7c7;
+  --soft: #768195;
+  --line: #293246;
+  --line-strong: #3b4660;
+  --orange: #f07b4b;
+  --gold: #f2c66d;
+  --blue: #63a7ff;
+  --purple: #9b5cff;
+  --sans: 'Inter', -apple-system, system-ui, sans-serif;
+  --display: 'Sora', 'Inter', -apple-system, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, rgba(13, 17, 26, 0.58), var(--bg) 64%),
+    radial-gradient(circle at 24% 0%, rgba(99, 167, 255, 0.16), transparent 32%),
+    radial-gradient(circle at 78% 6%, rgba(240, 123, 75, 0.12), transparent 30%),
+    var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+}
+
+.landing {
+  width: min(1080px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 90px 0 44px;
+}
+
+.hero {
+  text-align: center;
+  max-width: 1080px;
+  margin: 0 auto 54px;
+}
+
+.hero__title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 72px;
+  line-height: 0.98;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.hero__lede {
+  max-width: 720px;
+  margin: 20px auto 0;
+  color: var(--muted);
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.github-button {
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 26px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 800;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+  transition: transform 150ms, box-shadow 150ms;
+}
+
+.github-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.34);
+}
+
+.city-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.city-card {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(21, 28, 43, 0.9);
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.24);
+  transition: transform 180ms, border-color 180ms, background 180ms;
+}
+
+.city-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--line-strong);
+  background: rgba(27, 37, 56, 0.96);
+}
+
+.city-card__preview {
+  height: 240px;
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, #1a2840, #293246);
+}
+
+.city-card__preview::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(13,17,26,0.02) 0%, rgba(13,17,26,0.72) 100%);
+  pointer-events: none;
+}
+
+.city-card__preview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  transform: scale(1.02);
+  transition: transform 220ms;
+}
+
+.city-card:hover .city-card__preview img {
+  transform: scale(1.07);
+}
+
+.city-card__body {
+  padding: 24px;
+}
+
+.city-card__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  color: var(--soft);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.city-card h2 {
+  margin: 0 0 9px;
+  font-family: var(--display);
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+.city-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.footer {
+  display: flex;
+  justify-content: center;
+  padding: 30px 0 0;
+  color: var(--soft);
+  font-size: 12px;
+  text-align: center;
+}
+
+.footer a { color: var(--muted); text-decoration: none; }
+.footer a:hover { color: var(--ink); }
+
+@media (max-width: 780px) {
+  .landing {
+    width: min(100% - 28px, 1080px);
+    padding-top: 58px;
+  }
+
+  .hero {
+    margin-bottom: 36px;
+  }
+
+  .hero__lede {
+    font-size: 16px;
+  }
+
+  .hero__title {
+    font-size: 42px;
+  }
+
+  .city-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .city-card__preview {
+    height: 180px;
+  }
+
+  .footer {
+    display: none;
+  }
+}
+
+@media (max-width: 430px) {
+  .hero__title {
+    font-size: 34px;
+  }
+}
