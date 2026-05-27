@@ -300,7 +300,7 @@ map.on('load', async () => {
       paint: {
         'fill-extrusion-color': ['coalesce', ['get', 'color'], LANDMARK_MARKER_COLOR],
         'fill-extrusion-height': HEIGHT_EXPR,
-        'fill-extrusion-base': 0,
+        'fill-extrusion-base': ['*', ['coalesce', ['get', 'base_ft'], 0], 0.3048],
         'fill-extrusion-opacity': 0.98,
         'fill-extrusion-vertical-gradient': true
       }

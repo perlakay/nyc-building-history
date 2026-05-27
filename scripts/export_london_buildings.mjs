@@ -46,12 +46,10 @@ const BRIDGE_FEATURES = {
   }
 };
 
-// Most landmarks already exist in the official OS footprint source. Adding a
-// second decorative mass above them duplicates geometry and causes collisions.
-// Only standalone structures that need geometry beyond normal buildings render
-// in the curated layer.
+// Most landmarks already exist in the official OS footprint source. Only
+// structures requiring geometry beyond ordinary building footprints render in
+// the curated layer. Elizabeth Tower rises above the official Palace mass.
 const CUSTOM_STRUCTURE_IDS = new Set(['elizabeth-tower', 'tower-bridge', 'london-bridge']);
-const REPLACED_OFFICIAL_IDS = new Set(['elizabeth-tower']);
 
 const CURATED_LANDMARK_FOOTPRINTS = {
   'elizabeth-tower': {
@@ -87,7 +85,7 @@ const outlineFeatures = (osFootprints.features || [])
 
 const grid = makePointGrid(sourceBuildings);
 let matched = 0;
-let features = outlineFeatures.map(feature => {
+const features = outlineFeatures.map(feature => {
   const join = matchOfficial(feature.geometry, grid);
   const official = join?.record || null;
   if (official) matched += 1;
@@ -113,22 +111,21 @@ let features = outlineFeatures.map(feature => {
   return { type: 'Feature', properties: props, geometry: feature.geometry };
 });
 
-const removedOfficialFeatures = [];
-for (const landmark of LANDMARKS.filter(item => REPLACED_OFFICIAL_IDS.has(item.id))) {
-  const underlying = containingFeature(features, landmark.coords);
-  if (!underlying) continue;
-  removedOfficialFeatures.push({ id: landmark.id, bin: underlying.properties.bin });
-  features = features.filter(feature => feature !== underlying);
-}
-
 const landmarkFeatures = LANDMARKS.filter(landmark => CUSTOM_STRUCTURE_IDS.has(landmark.id)).map(landmark => {
   const geometry = CURATED_LANDMARK_FOOTPRINTS[landmark.id]
     || BRIDGE_FEATURES[landmark.id]
     || containingFeature(features, landmark.coords)?.geometry;
   if (!geometry) return null;
+  const host = landmark.id === 'elizabeth-tower' ? containingFeature(features, landmark.coords) : null;
   return {
     type: 'Feature',
-    properties: { id: landmark.id, name: landmark.name, h: landmark.h, color: landmark.color || '#d4b064' },
+    properties: {
+      id: landmark.id,
+      name: landmark.name,
+      h: landmark.h,
+      base_ft: host?.properties?.h || 0,
+      color: landmark.color || '#d4b064'
+    },
     geometry
   };
 }).filter(Boolean);
@@ -141,7 +138,6 @@ writeJson('building_overrides.json', {});
 writeJson('startup_history.json', { by_bin: {}, by_building_id: {}, by_mblr: {} });
 
 console.log(`Central London: wrote ${features.length.toLocaleString()} official OS footprints; strictly matched ${matched.toLocaleString()} to GLA construction-age records.`);
-console.log(`Replaced official footprint beneath custom structures: ${removedOfficialFeatures.map(item => `${item.id}:${item.bin}`).join(', ') || 'none'}.`);
 
 function writeJson(file, data) {
   fs.writeFileSync(path.join(outDir, file), JSON.stringify(data));
