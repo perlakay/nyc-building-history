@@ -25,6 +25,7 @@ export const ERA_BY_ID = {
 export const LANDMARKS = [
   {
     id: 'buckingham-palace',
+    bin: 'os-FE672D83-C44D-43E7-A5D3-7E05FAD1AD5A',
     name: 'Buckingham Palace',
     coords: [-0.1419, 51.5014],
     year: 1703,
@@ -37,6 +38,7 @@ export const LANDMARKS = [
   },
   {
     id: 'palace-westminster',
+    bin: 'os-7C0E4BBA-78FE-46A2-89C3-2196312604DF',
     name: 'Palace of Westminster',
     coords: [-0.12463, 51.49952],
     year: 1870,
@@ -68,6 +70,7 @@ export const LANDMARKS = [
   },
   {
     id: 'westminster-abbey',
+    bin: 'os-3C7502D7-7CDE-4BA6-B9A6-A599DF6E8EB5',
     name: 'Westminster Abbey',
     coords: [-0.1275, 51.4993],
     year: 1269,
@@ -115,6 +118,7 @@ export const LANDMARKS = [
   },
   {
     id: 'british-museum',
+    bin: 'os-1D6531A8-9C72-4C8B-8A60-C774FA1D2FB1',
     name: 'British Museum',
     coords: [-0.1269, 51.5194],
     year: 1857,
@@ -127,6 +131,7 @@ export const LANDMARKS = [
   },
   {
     id: 'somerset-house',
+    bin: 'os-8E3667B0-CDB0-4252-A74F-B5830A09C81C',
     name: 'Somerset House',
     coords: [-0.1175, 51.5111],
     year: 1801,
@@ -139,6 +144,7 @@ export const LANDMARKS = [
   },
   {
     id: 'st-pauls',
+    bin: 'os-401D77F1-DF60-44B9-8ED9-28EF75D8C30F',
     name: "St Paul's Cathedral",
     coords: [-0.09835, 51.51385],
     year: 1710,
@@ -151,6 +157,7 @@ export const LANDMARKS = [
   },
   {
     id: 'tate-modern',
+    bin: 'os-FF5A9FE0-6DFE-4640-BF3F-C0C717676133',
     name: 'Tate Modern',
     coords: [-0.0993, 51.5076],
     year: 2000,
@@ -163,6 +170,7 @@ export const LANDMARKS = [
   },
   {
     id: 'the-shard',
+    bin: 'os-36A53331-A6B6-41CE-8BA5-6555D1750F4D',
     name: 'The Shard',
     coords: [-0.0865, 51.5045],
     year: 2012,
@@ -175,6 +183,7 @@ export const LANDMARKS = [
   },
   {
     id: 'guildhall',
+    bin: 'os-36A6A153-0896-4958-85DC-3DDF91A7A299',
     name: 'Guildhall',
     coords: [-0.09175, 51.51586],
     year: 1440,
@@ -187,6 +196,7 @@ export const LANDMARKS = [
   },
   {
     id: 'mansion-house',
+    bin: 'os-066AFDB4-CA26-4A8C-AA9C-60F0CAC242EF',
     name: 'Mansion House',
     coords: [-0.08904, 51.51263],
     year: 1752,
@@ -199,6 +209,7 @@ export const LANDMARKS = [
   },
   {
     id: 'royal-exchange',
+    bin: 'os-1AA6F6EB-3ED3-44F2-828B-B307B90D322E',
     name: 'Royal Exchange',
     coords: [-0.08748, 51.51312],
     year: 1844,
@@ -211,6 +222,7 @@ export const LANDMARKS = [
   },
   {
     id: 'lloyds',
+    bin: 'os-25BB3F01-D8F0-45D7-8E91-1F25C2582EBB',
     name: "Lloyd's Building",
     coords: [-0.08317, 51.51282],
     year: 1986,
@@ -223,6 +235,7 @@ export const LANDMARKS = [
   },
   {
     id: 'leadenhall',
+    bin: 'os-9925D8DE-7759-46BA-8945-80A25ED004A7',
     name: 'The Leadenhall Building',
     coords: [-0.08228, 51.51389],
     year: 2014,
@@ -235,6 +248,7 @@ export const LANDMARKS = [
   },
   {
     id: 'walkie-talkie',
+    bin: 'os-316EE73F-B105-4A25-B5F8-218C44BEF51A',
     name: '20 Fenchurch Street',
     coords: [-0.08355, 51.51130],
     year: 2014,
@@ -247,6 +261,7 @@ export const LANDMARKS = [
   },
   {
     id: 'barbican-centre',
+    bin: 'os-118AE86D-0D77-4925-81A7-C053443E302C',
     name: 'Barbican Centre',
     coords: [-0.09313, 51.52014],
     year: 1982,
@@ -259,6 +274,7 @@ export const LANDMARKS = [
   },
   {
     id: 'tower-of-london',
+    bin: 'os-74F46AD8-E33D-48F0-9EA3-15A9B5E27BB9',
     name: 'Tower of London',
     coords: [-0.0761, 51.5081],
     year: 1078,

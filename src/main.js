@@ -242,10 +242,12 @@ map.on('load', async () => {
     // Real building heights — `h` is in feet from DOITT.
     const HEIGHT_EXPR = ['*', ['get', 'h'], 0.3048];
 
-    // Hide the generic buildings-fill polygon for any BIN that's a curated
-    // landmark — those are drawn by the dedicated landmark-fill layer in their
-    // signature red. Stops the z-fighting / hover-flicker between the two.
-    const landmarkIds = LANDMARKS.map(l => l[ID_FIELD]).filter(Boolean);
+    // Cities with replacement landmark geometry may hide the source footprint
+    // to prevent z-fighting. London keeps official footprints and uses BINs
+    // only to route a building click to its curated landmark card.
+    const landmarkIds = THEME.preserveBoundLandmarkFootprints
+      ? []
+      : LANDMARKS.map(l => l[ID_FIELD]).filter(Boolean);
     const bridgeIds = LANDMARKS.filter(l => l.id.endsWith('-bridge')).map(l => l.id);
 
     if (bridgeIds.length) {

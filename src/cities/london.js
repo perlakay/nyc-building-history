@@ -59,6 +59,7 @@ export const LONDON = {
     showLandmarkLabels: false,
     hideLandmarkGlow: true,
     landmarkPins: true,
+    preserveBoundLandmarkFootprints: true,
     heightEstimated: true,
     preservePitchOnFocus: true,
     pinAtCuratedCoordinates: true,
