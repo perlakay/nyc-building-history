@@ -493,8 +493,38 @@ async function addLandmarkPins() {
   await Promise.all(landmarks.map(async (landmark) => {
     const imageId = `landmark-${landmark.id}`;
     if (map.hasImage(imageId)) return;
-    map.addImage(imageId, createSimplePinIcon(LANDMARK_MARKER_COLOR), { pixelRatio: 2 });
+    const image = landmark.mapSymbol === 'wheel'
+      ? createWheelIcon(LANDMARK_MARKER_COLOR)
+      : createSimplePinIcon(LANDMARK_MARKER_COLOR);
+    map.addImage(imageId, image, { pixelRatio: 2 });
   }));
+
+  // Map-native anchors keep each landmark visibly located even if a custom
+  // icon is delayed or fails to paint while map assets load.
+  map.addLayer({
+    id: 'landmark-pin-halo',
+    type: 'circle',
+    source: 'landmark-pins-source',
+    paint: {
+      'circle-color': LANDMARK_MARKER_COLOR,
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 7, 14, 10, 17, 14],
+      'circle-opacity': 0.16,
+      'circle-blur': 0.4
+    }
+  });
+
+  map.addLayer({
+    id: 'landmark-pin-anchor',
+    type: 'circle',
+    source: 'landmark-pins-source',
+    paint: {
+      'circle-color': LANDMARK_MARKER_COLOR,
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 3.5, 14, 4.5, 17, 6],
+      'circle-stroke-color': '#fffaf0',
+      'circle-stroke-width': 1.4,
+      'circle-opacity': 0.98
+    }
+  });
 
   map.addLayer({
     id: 'landmark-pins',
@@ -536,6 +566,8 @@ async function addLandmarkPins() {
     setSelectedBuilding(null);
     openLandmark(id);
   });
+  map.on('mouseenter', 'landmark-pin-anchor', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'landmark-pin-anchor', () => { map.getCanvas().style.cursor = ''; });
   map.on('mouseenter', 'landmark-pins', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseleave', 'landmark-pins', () => { map.getCanvas().style.cursor = ''; });
 }
@@ -702,6 +734,58 @@ function createSimplePinIcon(color) {
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
+function createWheelIcon(color) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 104;
+  canvas.height = 120;
+  const ctx = canvas.getContext('2d');
+  const centerX = 52;
+  const centerY = 48;
+  const radius = 35;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.shadowColor = 'rgba(2, 8, 23, 0.65)';
+  ctx.shadowBlur = 10;
+  ctx.shadowOffsetY = 5;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.strokeStyle = '#fffaf0';
+  ctx.lineWidth = 2.5;
+  for (let i = 0; i < 8; i += 1) {
+    const angle = i * Math.PI / 4;
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(centerX, centerY + 3);
+  ctx.lineTo(37, 105);
+  ctx.moveTo(centerX, centerY + 3);
+  ctx.lineTo(67, 105);
+  ctx.moveTo(34, 105);
+  ctx.lineTo(70, 105);
+  ctx.stroke();
+
+  ctx.fillStyle = '#fffaf0';
+  for (let i = 0; i < 8; i += 1) {
+    const angle = i * Math.PI / 4;
+    ctx.beginPath();
+    ctx.arc(centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+}
+
 async function createStartupIcon(startup) {
   const size = 96;
   const canvas = document.createElement('canvas');
@@ -785,7 +869,7 @@ function setupStartupToggle() {
 
 function setupLandmarkToggle() {
   const toggle = document.getElementById('landmark-toggle');
-  const layers = ['landmark-pins', 'federal-pins'].filter(id => map.getLayer(id));
+  const layers = ['landmark-pin-halo', 'landmark-pin-anchor', 'landmark-pins', 'federal-pins'].filter(id => map.getLayer(id));
   if (!toggle || !layers.length) return;
   toggle.addEventListener('click', () => {
     const visible = map.getLayoutProperty(layers[0], 'visibility') !== 'none';
@@ -848,6 +932,14 @@ map.on('click', (e) => {
     if (pin.length && pin[0].properties.id) {
       setSelectedBuilding(null);
       openLandmark(pin[0].properties.id);
+      return;
+    }
+  }
+  if (map.getLayer('landmark-pin-anchor')) {
+    const anchor = map.queryRenderedFeatures(e.point, { layers: ['landmark-pin-anchor'] });
+    if (anchor.length && anchor[0].properties.id) {
+      setSelectedBuilding(null);
+      openLandmark(anchor[0].properties.id);
       return;
     }
   }
@@ -964,6 +1056,7 @@ function setHoveredBuilding(id) {
 }
 map.on('mousemove', (e) => {
   const hoverLayers = ['landmark-fill', 'landmark-bridge-fill', 'landmark-parts', 'landmark-glow'];
+  if (map.getLayer('landmark-pin-anchor')) hoverLayers.push('landmark-pin-anchor');
   if (map.getLayer('landmark-pins')) hoverLayers.push('landmark-pins');
   if (map.getLayer('federal-pins')) hoverLayers.push('federal-pins');
   const lm = map.queryRenderedFeatures(e.point, { layers: hoverLayers.filter(id => map.getLayer(id)) });

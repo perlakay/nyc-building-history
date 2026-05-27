@@ -102,6 +102,8 @@ export const LANDMARKS = [
     name: 'London Eye',
     coords: [-0.1195, 51.5033],
     year: 2000,
+    showAtOverview: true,
+    mapSymbol: 'wheel',
     objectType: 'Observation wheel',
     dateLabel: 'Opened',
     architect: 'Marks Barfield Architects',

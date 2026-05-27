@@ -46,61 +46,19 @@ const BRIDGE_FEATURES = {
   }
 };
 
-// Some stories should be accessible from pins without forcing a single fake
-// building mass. The Eye is not a building; the palace is already present as
-// official footprints; and isolated towers, domes, or chimneys must not set
-// the full host building to their landmark height.
-const NO_CURATED_MASSING_IDS = new Set([
-  'london-eye',
-  'palace-westminster',
-  'westminster-abbey',
-  'st-pauls',
-  'tate-modern'
-]);
+// Most landmarks already exist in the official OS footprint source. Adding a
+// second decorative mass above them duplicates geometry and causes collisions.
+// Only standalone structures that need geometry beyond normal buildings render
+// in the curated layer.
+const CUSTOM_STRUCTURE_IDS = new Set(['elizabeth-tower', 'tower-bridge', 'london-bridge']);
+const REPLACED_OFFICIAL_IDS = new Set(['elizabeth-tower']);
 
-// A few landmark sites are not represented as one useful OS building polygon:
-// station complexes swallow The Shard, courtyards split Somerset House and
-// the Barbican, and Lloyd's needs its recognisable footprint rather than a
-// neighbouring tower. These lightweight curated outlines keep the landmark
-// highlight attached to the thing the visitor selected.
 const CURATED_LANDMARK_FOOTPRINTS = {
   'elizabeth-tower': {
     type: 'Polygon',
     coordinates: [[
       [-0.12474, 51.50080], [-0.12453, 51.50080], [-0.12453, 51.50064],
       [-0.12474, 51.50064], [-0.12474, 51.50080]
-    ]]
-  },
-  'the-shard': {
-    type: 'Polygon',
-    coordinates: [[
-      [-0.08684, 51.50467], [-0.08675, 51.50435], [-0.08649, 51.50430],
-      [-0.08627, 51.50447], [-0.08639, 51.50472], [-0.08666, 51.50478],
-      [-0.08684, 51.50467]
-    ]]
-  },
-  'somerset-house': {
-    type: 'Polygon',
-    coordinates: [[
-      [-0.11865, 51.51138], [-0.11681, 51.51139], [-0.11673, 51.51065],
-      [-0.11862, 51.51063], [-0.11865, 51.51138]
-    ], [
-      [-0.11823, 51.51118], [-0.11717, 51.51118], [-0.11716, 51.51083],
-      [-0.11822, 51.51083], [-0.11823, 51.51118]
-    ]]
-  },
-  lloyds: {
-    type: 'Polygon',
-    coordinates: [[
-      [-0.08355, 51.51307], [-0.08302, 51.51313], [-0.08283, 51.51281],
-      [-0.08300, 51.51256], [-0.08345, 51.51259], [-0.08355, 51.51307]
-    ]]
-  },
-  'barbican-centre': {
-    type: 'Polygon',
-    coordinates: [[
-      [-0.09420, 51.52058], [-0.09247, 51.52058], [-0.09247, 51.51978],
-      [-0.09302, 51.51965], [-0.09416, 51.51975], [-0.09420, 51.52058]
     ]]
   }
 };
@@ -129,7 +87,7 @@ const outlineFeatures = (osFootprints.features || [])
 
 const grid = makePointGrid(sourceBuildings);
 let matched = 0;
-const features = outlineFeatures.map(feature => {
+let features = outlineFeatures.map(feature => {
   const join = matchOfficial(feature.geometry, grid);
   const official = join?.record || null;
   if (official) matched += 1;
@@ -155,7 +113,15 @@ const features = outlineFeatures.map(feature => {
   return { type: 'Feature', properties: props, geometry: feature.geometry };
 });
 
-const landmarkFeatures = LANDMARKS.filter(landmark => !NO_CURATED_MASSING_IDS.has(landmark.id)).map(landmark => {
+const removedOfficialFeatures = [];
+for (const landmark of LANDMARKS.filter(item => REPLACED_OFFICIAL_IDS.has(item.id))) {
+  const underlying = containingFeature(features, landmark.coords);
+  if (!underlying) continue;
+  removedOfficialFeatures.push({ id: landmark.id, bin: underlying.properties.bin });
+  features = features.filter(feature => feature !== underlying);
+}
+
+const landmarkFeatures = LANDMARKS.filter(landmark => CUSTOM_STRUCTURE_IDS.has(landmark.id)).map(landmark => {
   const geometry = CURATED_LANDMARK_FOOTPRINTS[landmark.id]
     || BRIDGE_FEATURES[landmark.id]
     || containingFeature(features, landmark.coords)?.geometry;
@@ -175,6 +141,7 @@ writeJson('building_overrides.json', {});
 writeJson('startup_history.json', { by_bin: {}, by_building_id: {}, by_mblr: {} });
 
 console.log(`Central London: wrote ${features.length.toLocaleString()} official OS footprints; strictly matched ${matched.toLocaleString()} to GLA construction-age records.`);
+console.log(`Replaced official footprint beneath custom structures: ${removedOfficialFeatures.map(item => `${item.id}:${item.bin}`).join(', ') || 'none'}.`);
 
 function writeJson(file, data) {
   fs.writeFileSync(path.join(outDir, file), JSON.stringify(data));
