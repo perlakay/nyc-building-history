@@ -73,7 +73,6 @@ const map = new maplibregl.Map({
   minZoom: 1.8,
   maxZoom: 10,
   renderWorldCopies: false,
-  maxBounds: [[-180, -85], [180, 85]],
   pitch: 0,
   bearing: 0
 });
