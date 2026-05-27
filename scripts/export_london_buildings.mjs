@@ -13,6 +13,7 @@ const FOOTPRINT_RETRIEVED_ON = process.env.LONDON_FOOTPRINT_DATE || '2026-05-24'
 const LANDMARKS = [
   { id: 'buckingham-palace', name: 'Buckingham Palace', coords: [-0.1419, 51.5014], h: 79 },
   { id: 'palace-westminster', name: 'Palace of Westminster', coords: [-0.12463, 51.49952], h: 316 },
+  { id: 'elizabeth-tower', name: 'Big Ben', coords: [-0.12463, 51.50072], h: 316, color: '#86F2FF' },
   { id: 'westminster-abbey', name: 'Westminster Abbey', coords: [-0.1275, 51.4993], h: 225 },
   { id: 'london-eye', name: 'London Eye', coords: [-0.1195, 51.5033], h: 443 },
   { id: 'british-museum', name: 'British Museum', coords: [-0.1269, 51.5194], h: 70 },
@@ -45,12 +46,23 @@ const BRIDGE_FEATURES = {
   }
 };
 
+// Some curated places should have a pin and a story card, but must never be
+// converted into an extruded building footprint.
+const POINT_ONLY_LANDMARK_IDS = new Set(['london-eye']);
+
 // A few landmark sites are not represented as one useful OS building polygon:
 // station complexes swallow The Shard, courtyards split Somerset House and
 // the Barbican, and Lloyd's needs its recognisable footprint rather than a
 // neighbouring tower. These lightweight curated outlines keep the landmark
 // highlight attached to the thing the visitor selected.
 const CURATED_LANDMARK_FOOTPRINTS = {
+  'elizabeth-tower': {
+    type: 'Polygon',
+    coordinates: [[
+      [-0.12474, 51.50080], [-0.12453, 51.50080], [-0.12453, 51.50064],
+      [-0.12474, 51.50064], [-0.12474, 51.50080]
+    ]]
+  },
   'the-shard': {
     type: 'Polygon',
     coordinates: [[
@@ -135,14 +147,14 @@ const features = outlineFeatures.map(feature => {
   return { type: 'Feature', properties: props, geometry: feature.geometry };
 });
 
-const landmarkFeatures = LANDMARKS.map(landmark => {
+const landmarkFeatures = LANDMARKS.filter(landmark => !POINT_ONLY_LANDMARK_IDS.has(landmark.id)).map(landmark => {
   const geometry = CURATED_LANDMARK_FOOTPRINTS[landmark.id]
     || BRIDGE_FEATURES[landmark.id]
     || containingFeature(features, landmark.coords)?.geometry;
   if (!geometry) return null;
   return {
     type: 'Feature',
-    properties: { id: landmark.id, name: landmark.name, h: landmark.h, color: '#d4b064' },
+    properties: { id: landmark.id, name: landmark.name, h: landmark.h, color: landmark.color || '#d4b064' },
     geometry
   };
 }).filter(Boolean);

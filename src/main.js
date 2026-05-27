@@ -483,7 +483,8 @@ async function addLandmarkPins() {
         properties: {
           id: l.id,
           name: l.name,
-          icon: `landmark-${l.id}`
+          icon: `landmark-${l.id}`,
+          showAtOverview: Boolean(l.showAtOverview)
         }
       }))
     }
@@ -509,7 +510,12 @@ async function addLandmarkPins() {
         17, 0.94
       ],
       'icon-allow-overlap': true,
-      'text-field': ['step', ['zoom'], '', 14.6, ['get', 'name']],
+      'text-field': [
+        'case',
+        ['boolean', ['get', 'showAtOverview'], false],
+        ['get', 'name'],
+        ['step', ['zoom'], '', 14.6, ['get', 'name']]
+      ],
       'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
       'text-size': 12,
       'text-anchor': 'top',

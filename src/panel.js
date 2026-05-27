@@ -45,9 +45,9 @@ export function renderPanel(l) {
 
   content().innerHTML = `
     <div class="card__body">
-      <div class="card__eyebrow">${escape((l.style || 'Landmark').toUpperCase())}</div>
+      <div class="card__eyebrow">${escape((l.objectType || l.style || 'Landmark').toUpperCase())}</div>
       <h1 class="card__title">${escape(l.name)}</h1>
-      <div class="card__year-line">Built ${escape(String(l.year))}</div>
+      <div class="card__year-line">${escape(l.dateLabel || 'Built')} ${escape(String(l.year))}</div>
 
       <dl class="card__meta">
         ${l.architect ? `<div><dt>Architect</dt><dd>${escape(l.architect)}</dd></div>` : ''}
