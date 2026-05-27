@@ -46,9 +46,17 @@ const BRIDGE_FEATURES = {
   }
 };
 
-// Some curated places should have a pin and a story card, but must never be
-// converted into an extruded building footprint.
-const POINT_ONLY_LANDMARK_IDS = new Set(['london-eye']);
+// Some stories should be accessible from pins without forcing a single fake
+// building mass. The Eye is not a building; the palace is already present as
+// official footprints; and isolated towers, domes, or chimneys must not set
+// the full host building to their landmark height.
+const NO_CURATED_MASSING_IDS = new Set([
+  'london-eye',
+  'palace-westminster',
+  'westminster-abbey',
+  'st-pauls',
+  'tate-modern'
+]);
 
 // A few landmark sites are not represented as one useful OS building polygon:
 // station complexes swallow The Shard, courtyards split Somerset House and
@@ -147,7 +155,7 @@ const features = outlineFeatures.map(feature => {
   return { type: 'Feature', properties: props, geometry: feature.geometry };
 });
 
-const landmarkFeatures = LANDMARKS.filter(landmark => !POINT_ONLY_LANDMARK_IDS.has(landmark.id)).map(landmark => {
+const landmarkFeatures = LANDMARKS.filter(landmark => !NO_CURATED_MASSING_IDS.has(landmark.id)).map(landmark => {
   const geometry = CURATED_LANDMARK_FOOTPRINTS[landmark.id]
     || BRIDGE_FEATURES[landmark.id]
     || containingFeature(features, landmark.coords)?.geometry;
