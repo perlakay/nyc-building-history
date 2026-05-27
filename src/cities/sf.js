@@ -72,6 +72,21 @@ export const SF = {
   bounds: [[-122.53, 37.68], [-122.34, 37.84]],
   minZoom: 10.8,
   maxZoom: 18,
+  theme: {
+    mapBackground: '#4C4C35',
+    landmarkMarker: '#B5EE32',
+    startupMarker: '#FFF2AE',
+    selected: '#FFE270',
+    eraRamp: [
+      'step',
+      ['coalesce', ['get', 'y'], 1900],
+      '#656743',
+      1900, '#FFE270',
+      1930, '#858839',
+      1960, '#DCFF3E',
+      2000, '#DFB836'
+    ]
+  },
   landmarks: LANDMARKS,
   eraById: ERA_BY_ID,
   geocoder,

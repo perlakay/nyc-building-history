@@ -1,5 +1,5 @@
 import maplibregl from 'maplibre-gl';
-import { renderPanel, renderWelcomePanel } from './panel.js';
+import { renderPanel } from './panel.js';
 import { createSearch } from './search.js';
 
 // City config is set by each entry HTML via window.CITY before this script
@@ -18,13 +18,16 @@ function resolveCity() {
 const CITY = resolveCity();
 const LANDMARKS = CITY.landmarks;
 const ERA_BY_ID = CITY.eraById;
-const STARTUP_MARKER_COLOR = '#9b5cff';
-const LANDMARK_MARKER_COLOR = '#c43a1f';
+const THEME = CITY.theme || {};
+const STARTUP_MARKER_COLOR = THEME.startupMarker || '#9b5cff';
+const LANDMARK_MARKER_COLOR = THEME.landmarkMarker || '#c43a1f';
+const SELECTED_COLOR = THEME.selected || '#f3d27a';
 const DATA = (path) => `/data/${CITY.id}/${path}`;
 // Per-city building id — `bin` for NYC, `building_id` for SF, etc. The engine
 // uses this name for index keys, search routing, and de-duping curated lots.
 const ID_FIELD = CITY.idField;
-console.log('[atlas] starting', CITY.id, '— buildings will load from', DATA('buildings.geojson'));
+const RENDER_DATA_FILE = CITY.renderDataFile || 'buildings.geojson';
+console.log('[atlas] starting', CITY.id, '— buildings will load from', DATA(RENDER_DATA_FILE));
 
 // Dark canvas. CARTO dark-matter (no labels) for streets/water. Labels go
 // BELOW the buildings so they never intercept clicks on building footprints.
@@ -58,7 +61,7 @@ const STYLE = {
     position: [1.4, 200, 50]
   },
   layers: [
-    { id: 'bg', type: 'background', paint: { 'background-color': '#0e1422' } },
+    { id: 'bg', type: 'background', paint: { 'background-color': THEME.mapBackground || '#0e1422' } },
     {
       id: 'carto-dark',
       type: 'raster',
@@ -81,7 +84,7 @@ const map = new maplibregl.Map({
   zoom: CITY.zoom,
   pitch: CITY.pitch,
   bearing: CITY.bearing,
-  maxBounds: CITY.bounds,
+  ...(CITY.bounds ? { maxBounds: CITY.bounds } : {}),
   minZoom: CITY.minZoom,
   maxZoom: CITY.maxZoom ?? 18,
   antialias: true
@@ -90,6 +93,7 @@ window.mapDebug = map;
 
 let selectedLandmarkId = null;
 let selectedBuildingId = null;
+const landmarkAnchorById = new Map();
 
 function setSelectedBuilding(id) {
   if (selectedBuildingId === id) return;
@@ -104,7 +108,7 @@ function setSelectedBuilding(id) {
 
 async function loadBuildings() {
   updateLoading('downloading building footprints…', 5);
-  const res = await fetch(DATA('buildings.geojson'));
+  const res = await fetch(DATA(RENDER_DATA_FILE));
   if (!res.ok) throw new Error('buildings fetch failed');
   const total = parseInt(res.headers.get('content-length') || '0', 10);
   const reader = res.body.getReader();
@@ -135,6 +139,38 @@ const buildingByBin = new Map();
 // BIN → curated correction (overrides DOITT data when DOITT is wrong).
 let buildingOverrides = {};
 let startupHistory = { by_bin: {}, by_building_id: {}, by_mblr: {} };
+function fullBuildingProperties(properties = {}) {
+  const id = properties[ID_FIELD];
+  return (id != null && buildingByBin.get(id)?.properties) || properties;
+}
+
+function indexBuildingDetails(fc) {
+  for (const feature of fc.features) {
+    const id = feature.properties?.[ID_FIELD];
+    if (id == null) continue;
+    const override = buildingOverrides[String(id)];
+    if (override) {
+      if (override.y != null) feature.properties.y = override.y;
+      if (override.h != null) feature.properties.h = override.h;
+      if (override.name != null) feature.properties.name = override.name;
+      feature.properties.corrected = true;
+    }
+    buildingByBin.set(id, feature);
+  }
+}
+
+async function loadBackgroundDetails() {
+  if (!CITY.detailDataFile) return;
+  try {
+    const response = await fetch(DATA(CITY.detailDataFile));
+    if (!response.ok) throw new Error(`details fetch ${response.status}`);
+    const full = await response.json();
+    indexBuildingDetails(full);
+    console.log('[atlas] full detail records ready,', full.features.length, 'features');
+  } catch (error) {
+    console.warn('[atlas] full detail records unavailable:', error.message);
+  }
+}
 
 map.on('load', async () => {
   try {
@@ -156,21 +192,14 @@ map.on('load', async () => {
         };
       }
     } catch {}
-    for (const f of fc.features) {
-      const bin = f.properties && f.properties[ID_FIELD];
-      if (bin != null) {
-        buildingByBin.set(bin, f);
-        const ov = buildingOverrides[String(bin)];
-        if (ov) {
-          if (ov.y != null) f.properties.y = ov.y;
-          if (ov.h != null) f.properties.h = ov.h;
-          if (ov.name != null) f.properties.name = ov.name;
-          f.properties.corrected = true;
-        }
-      }
-    }
+    indexBuildingDetails(fc);
     const lmRes = await fetch(DATA('landmark_footprints.geojson'));
     const lmFc = await lmRes.json();
+    for (const f of lmFc.features || []) {
+      const id = f.properties?.id;
+      const c = featureCentroid(f);
+      if (id && c) landmarkAnchorById.set(id, c);
+    }
     // Detailed OSM building parts for landmarks (where available) — gives
     // tower setbacks, spires, etc. Falls back gracefully if the file is empty.
     let partsFc = { type: 'FeatureCollection', features: [] };
@@ -190,16 +219,15 @@ map.on('load', async () => {
         type: 'FeatureCollection',
         features: LANDMARKS.map(l => ({
           type: 'Feature',
-          geometry: { type: 'Point', coordinates: l.coords },
+          geometry: { type: 'Point', coordinates: landmarkPoint(l) },
           properties: { id: l.id, name: l.name, kind: l.kind || 'landmark' }
         }))
       }
     });
 
-    // Era color ramp — soft, low-contrast gradient (warm → cool) so the
-    // skyline reads like a single illustration, not a heatmap with jumps.
-    // We coalesce a missing/zero year to 1900 so unknowns blend in tonally.
-    const ERA_RAMP = [
+    // Era color ramp. Each city can supply its own locally meaningful palette.
+    // Missing/zero years use the city's neutral fallback.
+    const ERA_RAMP = THEME.eraRamp || [
       'interpolate',
       ['linear'],
       ['coalesce', ['get', 'y'], 1900],
@@ -218,6 +246,26 @@ map.on('load', async () => {
     // landmark — those are drawn by the dedicated landmark-fill layer in their
     // signature red. Stops the z-fighting / hover-flicker between the two.
     const landmarkIds = LANDMARKS.map(l => l[ID_FIELD]).filter(Boolean);
+    const bridgeIds = LANDMARKS.filter(l => l.id.endsWith('-bridge')).map(l => l.id);
+
+    if (bridgeIds.length) {
+      // Bridges are crossings, not buildings. Draw low decks beneath official
+      // shore footprints so an abutment never appears to consume a building.
+      map.addLayer({
+        id: 'landmark-bridge-fill',
+        type: 'fill-extrusion',
+        source: 'landmarks-poly',
+        filter: ['in', ['get', 'id'], ['literal', bridgeIds]],
+        paint: {
+          'fill-extrusion-color': ['coalesce', ['get', 'color'], LANDMARK_MARKER_COLOR],
+          'fill-extrusion-height': 1.5,
+          'fill-extrusion-base': 0,
+          'fill-extrusion-opacity': 0.98,
+          'fill-extrusion-vertical-gradient': false
+        }
+      });
+    }
+
     map.addLayer({
       id: 'buildings-fill',
       type: 'fill-extrusion',
@@ -229,7 +277,7 @@ map.on('load', async () => {
         'fill-extrusion-color': [
           'case',
           ['boolean', ['feature-state', 'selected'], false],
-          '#f3d27a',
+          SELECTED_COLOR,
           ['boolean', ['feature-state', 'hover'], false],
           '#1f1a14',
           ERA_RAMP
@@ -246,8 +294,11 @@ map.on('load', async () => {
       id: 'landmark-fill',
       type: 'fill-extrusion',
       source: 'landmarks-poly',
+      ...(bridgeIds.length
+        ? { filter: ['!', ['in', ['get', 'id'], ['literal', bridgeIds]]] }
+        : {}),
       paint: {
-        'fill-extrusion-color': '#c43a1f',
+        'fill-extrusion-color': ['coalesce', ['get', 'color'], LANDMARK_MARKER_COLOR],
         'fill-extrusion-height': HEIGHT_EXPR,
         'fill-extrusion-base': 0,
         'fill-extrusion-opacity': 0.98,
@@ -261,7 +312,7 @@ map.on('load', async () => {
       type: 'fill-extrusion',
       source: 'landmark-parts',
       paint: {
-        'fill-extrusion-color': '#c43a1f',
+        'fill-extrusion-color': ['coalesce', ['get', 'color'], LANDMARK_MARKER_COLOR],
         'fill-extrusion-height': ['coalesce', ['to-number', ['get', 'h_m']], 30],
         'fill-extrusion-base': ['coalesce', ['to-number', ['get', 'min_h_m']], 0],
         'fill-extrusion-opacity': 0.99,
@@ -278,42 +329,74 @@ map.on('load', async () => {
       paint: { 'line-color': '#1c1614', 'line-width': 2.5, 'line-opacity': 0.85 }
     });
 
-    // Landmark glow markers (always visible, even at low zoom)
-    map.addLayer({
-      id: 'landmark-glow',
-      type: 'circle',
-      source: 'landmarks-pt',
-      filter: ['!=', ['get', 'kind'], 'startup'],
-      paint: {
-        'circle-radius': [
-          'interpolate', ['linear'], ['zoom'],
-          11, 4,
-          14, 7,
-          17, 10
-        ],
-        'circle-color': [
-          'case',
-          ['==', ['get', 'kind'], 'startup'],
-          STARTUP_MARKER_COLOR,
-          LANDMARK_MARKER_COLOR
-        ],
-        'circle-opacity': 0.65,
-        'circle-blur': 0.5,
-        'circle-stroke-color': '#fffaf0',
-        'circle-stroke-width': 1.5,
-        'circle-stroke-opacity': 0.7
-      }
-    });
+    if (!THEME.hideLandmarkGlow) {
+      map.addLayer({
+        id: 'landmark-glow',
+        type: 'circle',
+        source: 'landmarks-pt',
+        filter: ['!=', ['get', 'kind'], 'startup'],
+        paint: {
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            11, THEME.showLandmarkLabels ? 7 : 4,
+            14, THEME.showLandmarkLabels ? 11 : 7,
+            17, THEME.showLandmarkLabels ? 15 : 10
+          ],
+          'circle-color': [
+            'case',
+            ['==', ['get', 'kind'], 'federal'],
+            '#f7f0df',
+            LANDMARK_MARKER_COLOR
+          ],
+          'circle-opacity': THEME.showLandmarkLabels ? 0.82 : 0.65,
+          'circle-blur': 0.5,
+          'circle-stroke-color': [
+            'case',
+            ['==', ['get', 'kind'], 'federal'],
+            '#c6283b',
+            '#fffaf0'
+          ],
+          'circle-stroke-width': THEME.showLandmarkLabels ? 2.5 : 1.5,
+          'circle-stroke-opacity': 0.9
+        }
+      });
+    }
 
+    if (THEME.showLandmarkLabels) {
+      map.addLayer({
+        id: 'landmark-labels',
+        type: 'symbol',
+        source: 'landmarks-pt',
+        filter: ['!=', ['get', 'kind'], 'startup'],
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-size': [
+            'interpolate', ['linear'], ['zoom'],
+            11, 10,
+            15, 13
+          ],
+          'text-anchor': 'top',
+          'text-offset': [0, 0.8],
+          'text-allow-overlap': false,
+          'text-optional': true
+        },
+        paint: {
+          'text-color': '#fffaf0',
+          'text-halo-color': '#06172e',
+          'text-halo-width': 2
+        }
+      });
+    }
+
+    await addLandmarkPins();
+    await addFederalBuildingPins();
     await addStartupOfficePins();
+    setupLandmarkToggle();
     setupStartupToggle();
 
-    renderWelcomePanel({
-      buildingCount: fc.features.length,
-      landmarkCount: LANDMARKS.length,
-      cityName: CITY.name
-    });
     document.getElementById('loading').classList.add('loading--hidden');
+    void loadBackgroundDetails();
   } catch (err) {
     console.error(err);
     updateLoading(`error: ${err.message}`, 0);
@@ -384,6 +467,233 @@ async function addStartupOfficePins() {
   });
   map.on('mouseenter', 'startup-pins', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseleave', 'startup-pins', () => { map.getCanvas().style.cursor = ''; });
+}
+
+async function addLandmarkPins() {
+  const landmarks = LANDMARKS.filter(l => (l.kind || 'landmark') !== 'startup' && l.kind !== 'federal');
+  if (!THEME.landmarkPins || !landmarks.length) return;
+
+  map.addSource('landmark-pins-source', {
+    type: 'geojson',
+    data: {
+      type: 'FeatureCollection',
+      features: landmarks.map(l => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: landmarkPoint(l) },
+        properties: {
+          id: l.id,
+          name: l.name,
+          icon: `landmark-${l.id}`
+        }
+      }))
+    }
+  });
+
+  await Promise.all(landmarks.map(async (landmark) => {
+    const imageId = `landmark-${landmark.id}`;
+    if (map.hasImage(imageId)) return;
+    map.addImage(imageId, createSimplePinIcon(LANDMARK_MARKER_COLOR), { pixelRatio: 2 });
+  }));
+
+  map.addLayer({
+    id: 'landmark-pins',
+    type: 'symbol',
+    source: 'landmark-pins-source',
+    layout: {
+      'icon-image': ['get', 'icon'],
+      'icon-anchor': 'bottom',
+      'icon-size': [
+        'interpolate', ['linear'], ['zoom'],
+        11, 0.58,
+        14, 0.76,
+        17, 0.94
+      ],
+      'icon-allow-overlap': true,
+      'text-field': ['step', ['zoom'], '', 14.6, ['get', 'name']],
+      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+      'text-size': 12,
+      'text-anchor': 'top',
+      'text-offset': [0, 0.25],
+      'text-allow-overlap': false,
+      'text-optional': true
+    },
+    paint: {
+      'text-color': '#fffaf0',
+      'text-halo-color': THEME.mapBackground || '#111827',
+      'text-halo-width': 1.8
+    }
+  });
+
+  map.on('click', 'landmark-pins', (e) => {
+    const id = e.features?.[0]?.properties?.id;
+    if (!id) return;
+    setSelectedBuilding(null);
+    openLandmark(id);
+  });
+  map.on('mouseenter', 'landmark-pins', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'landmark-pins', () => { map.getCanvas().style.cursor = ''; });
+}
+
+async function addFederalBuildingPins() {
+  const federal = LANDMARKS.filter(l => l.kind === 'federal');
+  if (!federal.length) return;
+
+  map.addSource('federal-buildings', {
+    type: 'geojson',
+    data: {
+      type: 'FeatureCollection',
+      features: federal.map(l => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: landmarkPoint(l) },
+        properties: {
+          id: l.id,
+          name: l.name,
+          icon: `federal-${l.id}`
+        }
+      }))
+    }
+  });
+
+  await Promise.all(federal.map(async (building) => {
+    const imageId = `federal-${building.id}`;
+    if (map.hasImage(imageId)) return;
+    const image = await createFederalPinIcon(building);
+    map.addImage(imageId, image, { pixelRatio: 2 });
+  }));
+
+  map.addLayer({
+    id: 'federal-pins',
+    type: 'symbol',
+    source: 'federal-buildings',
+    layout: {
+      'icon-image': ['get', 'icon'],
+      'icon-anchor': 'bottom',
+      'icon-size': [
+        'interpolate', ['linear'], ['zoom'],
+        11, 0.62,
+        14, 0.78,
+        17, 0.96
+      ],
+      'icon-allow-overlap': true,
+      'text-field': ['step', ['zoom'], '', 14.2, ['get', 'name']],
+      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+      'text-size': 12,
+      'text-anchor': 'top',
+      'text-offset': [0, 0.25],
+      'text-allow-overlap': false,
+      'text-optional': true
+    },
+    paint: {
+      'text-color': '#fffaf0',
+      'text-halo-color': '#071a33',
+      'text-halo-width': 1.8
+    }
+  });
+
+  map.on('click', 'federal-pins', (e) => {
+    const id = e.features?.[0]?.properties?.id;
+    if (!id) return;
+    setSelectedBuilding(null);
+    openLandmark(id);
+  });
+  map.on('mouseenter', 'federal-pins', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'federal-pins', () => { map.getCanvas().style.cursor = ''; });
+}
+
+async function createFederalPinIcon(building) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 96;
+  canvas.height = 112;
+  const ctx = canvas.getContext('2d');
+  const color = building.pinColor || '#244a7c';
+  const src = building.logoSrc || THEME.federalIcon || '/images/gov-emblem.png';
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.shadowColor = 'rgba(2, 8, 23, 0.5)';
+  ctx.shadowBlur = 10;
+  ctx.shadowOffsetY = 5;
+  ctx.beginPath();
+  ctx.arc(48, 43, 32, 0, Math.PI * 2);
+  ctx.fillStyle = '#fffaf0';
+  ctx.fill();
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.arc(48, 43, 30, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+
+  let logo = null;
+  try { logo = await loadLogoImage(src); } catch {}
+  if (logo) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(48, 43, 22, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(logo, 26, 21, 44, 44);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = color;
+    ctx.font = '800 18px Inter, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('GOV', 48, 44);
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(39, 72);
+  ctx.lineTo(57, 72);
+  ctx.lineTo(48, 91);
+  ctx.closePath();
+  ctx.fillStyle = '#fffaf0';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+function landmarkPoint(landmark) {
+  if (THEME.pinAtCuratedCoordinates) return landmark.coords;
+  return landmarkAnchorById.get(landmark.id) || landmark.coords;
+}
+
+function createSimplePinIcon(color) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 72;
+  canvas.height = 92;
+  const ctx = canvas.getContext('2d');
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.shadowColor = 'rgba(2, 8, 23, 0.45)';
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 4;
+  ctx.beginPath();
+  ctx.moveTo(36, 4);
+  ctx.bezierCurveTo(18, 4, 8, 16, 8, 32);
+  ctx.bezierCurveTo(8, 53, 36, 88, 36, 88);
+  ctx.bezierCurveTo(36, 88, 64, 53, 64, 32);
+  ctx.bezierCurveTo(64, 16, 54, 4, 36, 4);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#fffaf0';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(36, 32, 10, 0, Math.PI * 2);
+  ctx.fillStyle = '#fffaf0';
+  ctx.fill();
+
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
 async function createStartupIcon(startup) {
@@ -467,9 +777,45 @@ function setupStartupToggle() {
   });
 }
 
+function setupLandmarkToggle() {
+  const toggle = document.getElementById('landmark-toggle');
+  const layers = ['landmark-pins', 'federal-pins'].filter(id => map.getLayer(id));
+  if (!toggle || !layers.length) return;
+  toggle.addEventListener('click', () => {
+    const visible = map.getLayoutProperty(layers[0], 'visibility') !== 'none';
+    for (const layer of layers) {
+      map.setLayoutProperty(layer, 'visibility', visible ? 'none' : 'visible');
+    }
+    toggle.classList.toggle('map-toggle--active', !visible);
+    toggle.setAttribute('aria-pressed', String(!visible));
+  });
+}
+
+function setupLegendToggle() {
+  const legend = document.querySelector('.legend');
+  if (!legend) return;
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'legend__close';
+  close.setAttribute('aria-label', 'Hide year key');
+  close.textContent = 'x';
+
+  const reopen = document.createElement('button');
+  reopen.type = 'button';
+  reopen.className = 'legend__reopen';
+  reopen.textContent = 'Year key';
+
+  legend.append(close, reopen);
+  close.addEventListener('click', () => legend.classList.add('legend--closed'));
+  reopen.addEventListener('click', () => legend.classList.remove('legend--closed'));
+}
+
+setupLegendToggle();
+
 // Compass — rotate rose based on map bearing, click toggles top-down ↔ 3D.
-const DEFAULT_PITCH = CITY.pitch;
-const DEFAULT_BEARING = CITY.bearing;
+const DEFAULT_PITCH = CITY.explorePitch ?? CITY.pitch;
+const DEFAULT_BEARING = CITY.exploreBearing ?? CITY.bearing;
 const compassEl = document.getElementById('compass');
 const compassRose = compassEl?.querySelector('#compass-rose');
 function updateCompass() {
@@ -491,6 +837,25 @@ compassEl?.addEventListener('click', () => {
 // which sit high in the air with `min_h_m > 0`) are excluded — otherwise they
 // hijack clicks on adjacent buildings whose pixels happen to sit under a spire.
 map.on('click', (e) => {
+  if (map.getLayer('landmark-pins')) {
+    const pin = map.queryRenderedFeatures(e.point, { layers: ['landmark-pins'] });
+    if (pin.length && pin[0].properties.id) {
+      setSelectedBuilding(null);
+      openLandmark(pin[0].properties.id);
+      return;
+    }
+  }
+
+  // 0a. Federal seal pins sit above the skyline on DC.
+  if (map.getLayer('federal-pins')) {
+    const federal = map.queryRenderedFeatures(e.point, { layers: ['federal-pins'] });
+    if (federal.length && federal[0].properties.id) {
+      setSelectedBuilding(null);
+      openLandmark(federal[0].properties.id);
+      return;
+    }
+  }
+
   // 0. Startup office pin? These sit visually above buildings and should win
   // the click target even when a building footprint is directly underneath.
   if (map.getLayer('startup-pins') && map.getLayoutProperty('startup-pins', 'visibility') !== 'none') {
@@ -511,9 +876,6 @@ map.on('click', (e) => {
       return;
     }
   }
-
-  // Landmark point markers are intentionally small and always visible. They
-  // make off-footprint places like bridges and startup offices easy to open.
   if (map.getLayer('landmark-glow')) {
     const marker = map.queryRenderedFeatures(e.point, { layers: ['landmark-glow'] });
     if (marker.length && marker[0].properties.id) {
@@ -538,7 +900,7 @@ map.on('click', (e) => {
       }
       setSelectedBuilding(bld[0].id);
       const c = featureCentroid(bld[0]) || [e.lngLat.lng, e.lngLat.lat];
-      openGenericAt({ lng: c[0], lat: c[1] }, bld[0].properties);
+      openGenericAt({ lng: c[0], lat: c[1] }, fullBuildingProperties(bld[0].properties));
       return;
     }
   }
@@ -552,7 +914,16 @@ map.on('click', (e) => {
     if (wider.length) {
       setSelectedBuilding(wider[0].id);
       const c = featureCentroid(wider[0]) || [e.lngLat.lng, e.lngLat.lat];
-      openGenericAt({ lng: c[0], lat: c[1] }, wider[0].properties);
+      openGenericAt({ lng: c[0], lat: c[1] }, fullBuildingProperties(wider[0].properties));
+      return;
+    }
+  }
+
+  if (map.getLayer('landmark-bridge-fill')) {
+    const bridge = map.queryRenderedFeatures(e.point, { layers: ['landmark-bridge-fill'] });
+    if (bridge.length && bridge[0].properties.id) {
+      setSelectedBuilding(null);
+      openLandmark(bridge[0].properties.id);
       return;
     }
   }
@@ -562,7 +933,8 @@ map.on('click', (e) => {
   // their footprints are thin ribbons. If no building was hit, check whether
   // the click is within ~250 m of a bridge coord and open that landmark.
   const near = nearestLandmark(e.lngLat);
-  if (near && near.distKm < 0.25 && near.landmark.id.endsWith('-bridge')) {
+  const bridgeClickRadiusKm = THEME.bridgeClickRadiusKm ?? 0.25;
+  if (near && near.distKm < bridgeClickRadiusKm && near.landmark.id.endsWith('-bridge')) {
     openLandmark(near.landmark.id);
     return;
   }
@@ -585,7 +957,10 @@ function setHoveredBuilding(id) {
   }
 }
 map.on('mousemove', (e) => {
-  const lm = map.queryRenderedFeatures(e.point, { layers: ['landmark-fill', 'landmark-parts', 'landmark-glow'] });
+  const hoverLayers = ['landmark-fill', 'landmark-bridge-fill', 'landmark-parts', 'landmark-glow'];
+  if (map.getLayer('landmark-pins')) hoverLayers.push('landmark-pins');
+  if (map.getLayer('federal-pins')) hoverLayers.push('federal-pins');
+  const lm = map.queryRenderedFeatures(e.point, { layers: hoverLayers.filter(id => map.getLayer(id)) });
   if (lm.length) {
     map.getCanvas().style.cursor = 'pointer';
     setHoveredBuilding(null);
@@ -628,7 +1003,7 @@ function snapToBuilding(lng, lat) {
         lng: c ? c[0] : lng,
         lat: c ? c[1] : lat,
         id: best.id,
-        props: best.properties
+        props: fullBuildingProperties(best.properties)
       };
     }
   }
@@ -656,13 +1031,13 @@ async function openGenericAt(lngLat, props = {}, knownAddress = null, opts = {})
   // Only show the "best guess" disclaimer when search was a fuzzy snap; exact
   // BIN matches don't need it.
   const fuzzyMatch = fromSearch && !exactMatch;
-  const initialAddress = knownAddress || 'Loading address…';
+  const initialAddress = knownAddress || localRecord.address || 'Loading address…';
   renderPanel({
     generic: true,
     era: localRecord.era,
     address: { ...localRecord, address: initialAddress },
     localOnly: true,
-    addressLoading: !knownAddress,
+    addressLoading: !knownAddress && !localRecord.address,
     fromSearch: fuzzyMatch,
     cityName: CITY.name,
     sources: CITY.sources
@@ -670,7 +1045,9 @@ async function openGenericAt(lngLat, props = {}, knownAddress = null, opts = {})
   document.getElementById('panel').classList.remove('panel--hidden');
 
   const parcelDetails = fetchAddress(lngLat.lng, lngLat.lat).catch(() => null);
-  const reversePromise = knownAddress ? Promise.resolve(knownAddress) : reverseGeocode(lngLat.lng, lngLat.lat);
+  const reversePromise = knownAddress || localRecord.address
+    ? Promise.resolve(knownAddress || localRecord.address)
+    : reverseGeocode(lngLat.lng, lngLat.lat);
 
   const reverseAddr = await reversePromise;
   const parcelSettled = await Promise.race([parcelDetails, new Promise(r => setTimeout(() => r('pending'), 0))]);
@@ -776,16 +1153,32 @@ function buildLocalRecord(lngLat, props = {}) {
   const startups = lookupStartupHistory(props);
 
   return {
-    address: null,            // resolved async — see openGenericAt
+    address: props.address || props.name || null,
     yearbuilt,
-    floors: estFloors,
-    height: heightFt ? `${Math.round(heightFt)} ft` : null,
-    heightMeters: heightM ? `${heightM} m` : null,
-    form: describeBuildingForm(yearbuilt, heightFt),
-    styleHint: architecturalEra(yearbuilt),
+    yearBand: props.age_band || null,
+    floors: props.stories ? parseFloat(props.stories) : estFloors,
+    height: heightFt && props.height_available !== false ? `${Math.round(heightFt)} ft` : null,
+    heightMeters: heightM && props.height_available !== false ? `${heightM} m` : null,
+    heightEstimated: Boolean(THEME.heightEstimated || CITY.id === 'dc'),
+    form: CITY.id === 'dc' ? null : describeBuildingForm(yearbuilt, heightFt),
+    styleHint: CITY.id === 'dc' ? null : architecturalEra(yearbuilt, CITY.id),
     zone: null,
     histdist: null,
     era,
+    owner: props.owner || null,
+    architect: props.architect || props.architect_group || null,
+    builder: props.builder || props.developer || null,
+    material: props.material || props.front_material || null,
+    purpose: props.purpose || props.house_type || null,
+    permitNumber: props.permit_number || null,
+    permitSource: props.permits_source || null,
+    permitNotes: props.permit_notes || props.notes || null,
+    squareLot: props.square_lot || null,
+    facade: props.facade || null,
+    roof: props.roof_material || props.roof_type || null,
+    heat: props.heat || null,
+    estimatedCost: props.estimated_cost || null,
+    contributing: props.contributing || null,
     startups
   };
 }
@@ -831,8 +1224,18 @@ function describeBuildingForm(year, heightFt) {
   return 'small-scale building mass';
 }
 
-function architecturalEra(year) {
+function architecturalEra(year, cityId = 'nyc') {
   if (!year) return null;
+  if (cityId === 'london') {
+    if (year < 1900) return 'historic London fabric';
+    if (year < 1930) return 'Edwardian and interwar London fabric';
+    if (year < 1950) return 'interwar London fabric';
+    if (year < 1967) return 'postwar rebuilding-era fabric';
+    if (year < 1983) return 'late postwar London fabric';
+    if (year < 1996) return 'late twentieth-century City development';
+    if (year < 2012) return 'millennial City development';
+    return 'recent City development';
+  }
   if (year < 1825) return 'a Federal-era structure';
   if (year < 1860) return "from NYC's Greek Revival and early Italianate period";
   if (year < 1900) return 'during the tenement and brownstone boom';
@@ -864,6 +1267,10 @@ function eraFromYear(y) {
   return 'contemporary';
 }
 
+function focusPitch() {
+  return THEME.preservePitchOnFocus ? map.getPitch() : Math.max(map.getPitch(), 45);
+}
+
 function openLandmark(id) {
   const landmark = LANDMARKS.find(l => l.id === id);
   if (!landmark) return;
@@ -878,9 +1285,9 @@ function openLandmark(id) {
   const currentZoom = map.getZoom();
   const targetZoom = currentZoom >= 16 ? currentZoom : 16.5;
   map.easeTo({
-    center: landmark.coords,
+    center: landmarkPoint(landmark),
     zoom: targetZoom,
-    pitch: Math.max(map.getPitch(), 45),
+    pitch: focusPitch(),
     duration: 900,
     offset: [220, 0]
   });
@@ -960,7 +1367,7 @@ createSearch({
     const idFeature = r.idValue != null ? buildingByBin.get(r.idValue) : null;
     if (idFeature) {
       const c = featureCentroid(idFeature) || r.coords;
-      map.easeTo({ center: c, zoom: Math.max(map.getZoom(), 17), pitch: Math.max(map.getPitch(), 45), duration: 900, offset: [220, 0] });
+      map.easeTo({ center: c, zoom: Math.max(map.getZoom(), 17), pitch: focusPitch(), duration: 900, offset: [220, 0] });
       placeSearchMarker(c[0], c[1], r.label);
       map.once('idle', () => {
         const pt = map.project(c);
@@ -974,8 +1381,23 @@ createSearch({
 
     // No id (rare, e.g. an intersection or place result) → centroid snap.
     const [lng, lat] = r.coords;
-    map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 17), pitch: Math.max(map.getPitch(), 45), duration: 900, offset: [220, 0] });
+    map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 17), pitch: focusPitch(), duration: 900, offset: [220, 0] });
     map.once('idle', () => {
+      if (THEME.exactSearchSelection) {
+        const point = map.project([lng, lat]);
+        const exact = map.queryRenderedFeatures(point, { layers: ['buildings-fill'] })[0] || null;
+        placeSearchMarker(lng, lat, r.label);
+        if (exact) {
+          setSelectedBuilding(exact.id);
+          const props = fullBuildingProperties(exact.properties);
+          openGenericAt({ lng, lat }, props, props.address || r.label, { exactMatch: false });
+        } else {
+          setSelectedBuilding(null);
+          renderPanel({ generic: true, notFound: true, cityName: CITY.name });
+          document.getElementById('panel').classList.remove('panel--hidden');
+        }
+        return;
+      }
       const snap = snapToBuilding(lng, lat);
       setSelectedBuilding(snap.id);
       placeSearchMarker(snap.lng, snap.lat, r.label);

@@ -43,6 +43,20 @@ export const NYC = {
   bounds: [[-74.30, 40.49], [-73.68, 40.93]],
   minZoom: 10.8,
   maxZoom: 18,
+  theme: {
+    mapBackground: '#4C4335',
+    landmarkMarker: '#FFD27A',
+    selected: '#FFA770',
+    eraRamp: [
+      'step',
+      ['coalesce', ['get', 'y'], 1900],
+      '#6A5940',
+      1900, '#FFA770',
+      1930, '#886139',
+      1960, '#FFB53E',
+      2000, '#D77336'
+    ]
+  },
   // Curated content
   landmarks: LANDMARKS,
   eraById: ERA_BY_ID,

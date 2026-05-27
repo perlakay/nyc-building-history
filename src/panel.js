@@ -52,6 +52,7 @@ export function renderPanel(l) {
       <dl class="card__meta">
         ${l.architect ? `<div><dt>Architect</dt><dd>${escape(l.architect)}</dd></div>` : ''}
         ${l.height ? `<div><dt>Size</dt><dd>${escape(l.height)}</dd></div>` : ''}
+        ${l.agencies?.length ? `<div><dt>Federal use</dt><dd>${escape(l.agencies.join(', '))}</dd></div>` : ''}
         ${row('Era', eraLabel(l.era))}
       </dl>
 
@@ -67,11 +68,25 @@ export function renderPanel(l) {
           <p>${escape(l.design)}</p>
         </section>` : ''}
 
+      ${l.agencies?.length ? `
+        <section class="card__section">
+          <h2>Departments / offices</h2>
+          <p>${escape(l.agencies.join(', '))}</p>
+        </section>` : ''}
+
       ${l.fact ? `
         <aside class="card__fact">
           <div class="card__fact-label">Did you know</div>
           <p>${escape(l.fact)}</p>
         </aside>` : ''}
+
+      ${l.sources?.length ? `
+        <section class="card__section">
+          <h2>Sources</h2>
+          <ul class="card__sources">
+            ${l.sources.map(sourceItem).join('')}
+          </ul>
+        </section>` : ''}
 
       <div class="card__footer">
         ${l.sourceFooter || 'Story curated · building data via city open data'}
@@ -82,9 +97,17 @@ export function renderPanel(l) {
   content().scrollTop = 0;
 }
 
+function sourceItem(source) {
+  if (typeof source === 'string') return `<li>${escape(source)}</li>`;
+  const label = escape(source.label || source.url || 'Source');
+  if (!source.url) return `<li>${label}</li>`;
+  return `<li><a href="${escape(source.url)}" target="_blank" rel="noopener">${label}</a></li>`;
+}
+
 function renderGeneric(l) {
   const a = l.address || {};
   const yearbuilt = a.yearbuilt && a.yearbuilt > 1700 ? a.yearbuilt : null;
+  const yearBand = a.yearBand || null;
   const era = l.era || eraFromYear(yearbuilt);
   const cityName = l.cityName || 'NYC';
   const sources = l.sources || {};
@@ -107,8 +130,13 @@ function renderGeneric(l) {
 
   // History paragraph — rich narrative weaving year, era, district, alterations.
   const historyBits = [];
-  if (yearbuilt) {
-    const archEra = architecturalEra(yearbuilt);
+  if (/London/i.test(cityName) && yearBand) {
+    const archEra = architecturalEra(yearbuilt, cityName);
+    historyBits.push(`Recorded in the GLA London Building Stock Model as ${yearBand}${archEra ? ', representing ' + archEra : ''}.`);
+  } else if (/Washington/i.test(cityName) && yearbuilt) {
+    historyBits.push(`DC HistoryQuest records the year for this building as ${yearbuilt}.`);
+  } else if (yearbuilt) {
+    const archEra = architecturalEra(yearbuilt, cityName);
     historyBits.push(`Built in ${yearbuilt}${archEra ? ', ' + archEra : ''}.`);
   } else if (a.styleHint) {
     historyBits.push(`Likely a ${a.styleHint}.`);
@@ -119,16 +147,17 @@ function renderGeneric(l) {
   if (a.yearalter1 && a.yearalter1 > 1700) {
     historyBits.push(`The building was significantly altered in ${a.yearalter1}${a.yearalter2 && a.yearalter2 > a.yearalter1 ? `, and again in ${a.yearalter2}` : ''}.`);
   }
-  if (a.owner && !/^\s*$|UNKNOWN|N\/A/i.test(a.owner)) {
-    historyBits.push(`The owner of record is ${a.owner}.`);
+  if (a.purpose && /Washington/i.test(cityName)) {
+    historyBits.push(`The historic record identifies its original use as ${a.purpose}.`);
   }
 
   // Design / form paragraph.
   const designBits = [];
   if (a.form) designBits.push(`The massing reads as a ${a.form}.`);
+  if (a.material && /Washington/i.test(cityName)) designBits.push(`The historic material record lists ${a.material}.`);
 
   // Did-you-know fact — synthesized from what we know.
-  const fact = synthesizeFact(yearbuilt, a);
+  const fact = synthesizeFact(yearbuilt, a, cityName);
 
   const titleText = compactTitle(a.address) || 'Unlisted address';
   const titleClass = l.addressLoading ? 'card__title card__title--loading' : 'card__title';
@@ -137,11 +166,11 @@ function renderGeneric(l) {
     <div class="card__body">
       <div class="card__eyebrow">${escape(eraLabel(era))}</div>
       <h1 class="${titleClass}">${escape(titleText)}</h1>
-      <div class="card__year-line">${yearbuilt ? `Built ${yearbuilt}` : 'Year unknown'}</div>
+      <div class="card__year-line">${yearBand ? `Construction age ${escape(yearBand)}` : (yearbuilt ? (/Washington/i.test(cityName) ? `Recorded year ${yearbuilt}` : `Built ${yearbuilt}`) : 'Year unknown')}</div>
 
       <dl class="card__meta">
-        ${row('Built', yearbuilt ? String(yearbuilt) : '—')}
-        ${a.height ? row('Height', a.height + (a.heightMeters ? ` · ${a.heightMeters}` : '')) : ''}
+        ${yearBand ? row('Age band', yearBand) : row(/Washington/i.test(cityName) ? 'Recorded year' : 'Built', yearbuilt ? String(yearbuilt) : '—')}
+        ${a.height ? row(a.heightEstimated ? 'Est. height' : 'Height', a.height + (a.heightMeters ? ` · ${a.heightMeters}` : '')) : ''}
         ${a.borough ? row('Borough', boroughLabel(a.borough)) : ''}
       </dl>
 
@@ -208,8 +237,15 @@ function renderGeneric(l) {
   `;
 }
 
-function synthesizeFact(year, a) {
+function synthesizeFact(year, a, cityName = 'NYC') {
   if (!year && !a.height) return null;
+  if (/London/i.test(cityName)) {
+    if (a.yearBand) return `This colour uses a GLA construction-age band based on October 2024 data, not an exact completion year. The official OS OpenMap Local footprint was retrieved on 24 May 2026.`;
+    return `This official OS OpenMap Local footprint was retrieved on 24 May 2026; no GLA construction-age point was verified inside it.`;
+  }
+  if (/Washington/i.test(cityName)) {
+    return null;
+  }
   if (year && year < 1860) return `This is one of the oldest standing structures in this part of the city — it was already here when the elevated trains, the subway, and even most of the brownstones did not exist yet.`;
   if (year && year < 1900) return `When this was built, NYC had no skyscrapers, no subway, and the city ended near 59th Street. The Brooklyn Bridge had not yet opened.`;
   if (year && year >= 1900 && year < 1916) return `Built in the run-up to the 1916 Zoning Resolution — the first comprehensive zoning law in any U.S. city, written largely in response to towers like the nearby Equitable Building.`;
@@ -230,7 +266,7 @@ function compactTitle(value) {
   if (!s) return '';
   const parts = s.split(',').map(p => p.trim()).filter(Boolean);
   if (parts.length <= 2) return s;
-  const cityWords = /^(San Francisco|California|United States|\d{5}(?:-\d{4})?)$/i;
+  const cityWords = /^(San Francisco|California|United States|London|City of London|Greater London|England|United Kingdom|\d{5}(?:-\d{4})?|[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})$/i;
   const useful = parts.filter(p => !cityWords.test(p));
   return useful.slice(0, 2).join(', ') || parts.slice(0, 2).join(', ');
 }
@@ -244,8 +280,18 @@ function eraFromYear(y) {
   return 'contemporary';
 }
 
-function architecturalEra(year) {
+function architecturalEra(year, cityName = 'NYC') {
   if (!year) return null;
+  if (/London/i.test(cityName)) {
+    if (year < 1900) return 'historic City fabric';
+    if (year < 1930) return 'Edwardian and early interwar construction';
+    if (year < 1950) return 'interwar construction';
+    if (year < 1967) return 'postwar rebuilding';
+    if (year < 1983) return 'later postwar construction';
+    if (year < 1996) return 'late twentieth-century development';
+    if (year < 2012) return 'turn-of-the-century development';
+    return 'recent City development';
+  }
   if (year < 1825) return 'a Federal-era structure';
   if (year < 1860) return "from NYC's Greek Revival and early Italianate period";
   if (year < 1900) return 'during the tenement and brownstone boom';
@@ -302,7 +348,8 @@ function eraLabel(era) {
   return ({
     artdeco: 'Art Deco', beauxarts: 'Beaux-Arts', gothic: 'Neo-Gothic',
     modernist: 'Modernist', victorian: 'Victorian', contemporary: 'Contemporary',
-    theatrical: 'Theatrical', startup: 'Startup Office', unknown: 'Undated'
+    theatrical: 'Theatrical', startup: 'Startup Office', federal: 'Federal Building',
+    historic: 'Historic London', unknown: 'Undated'
   })[era] || (era || 'Landmark');
 }
 

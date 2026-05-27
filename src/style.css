@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap');
 
 :root {
   --paper: #161c2c;          /* deep night sky */
@@ -30,6 +30,118 @@ html, body {
   font-family: var(--sans);
   font-size: 13.5px;
   overflow: hidden;
+}
+
+body.city-dc {
+  --paper: #4C3535;
+  --paper-2: #884039;
+  --card: #4C3535;
+  --card-2: #884039;
+  --ink: #FF7070;
+  --ink-2: #FF783E;
+  --ink-3: #DF4436;
+  --line: #884039;
+  --line-strong: #DF4436;
+  --accent: #DF4436;
+  --accent-2: #FF783E;
+  --gold: #FF7070;
+  --button-ink: #4C3535;
+  --panel: rgba(76, 53, 53, 0.98);
+}
+
+body.city-dc .brand,
+body.city-dc .search,
+body.city-dc .legend,
+body.city-dc .sources__toggle,
+body.city-dc .sources__panel,
+body.city-dc .panel,
+body.city-dc .compass {
+  box-shadow: 0 2px 0 rgba(143, 31, 45, 0.75), 0 16px 36px rgba(3, 10, 24, 0.28);
+}
+
+body.city-dc .brand__glyph,
+body.city-dc .sources__toggle-icon,
+body.city-dc .search-result--landmark .search-result__label,
+body.city-dc .legend__row--landmark {
+  color: var(--accent);
+}
+
+body.city-dc .search:focus-within {
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+body.city-nyc {
+  --paper: #4C4335;
+  --paper-2: #886139;
+  --card: #4C4335;
+  --card-2: #886139;
+  --ink: #FFA770;
+  --ink-2: #FFB53E;
+  --ink-3: #D77336;
+  --line: #886139;
+  --line-strong: #D77336;
+  --accent: #FFB53E;
+  --accent-2: #D77336;
+  --gold: #FFA770;
+  --button-ink: #4C4335;
+  --panel: rgba(76, 67, 53, 0.98);
+}
+
+body.city-sf {
+  --paper: #4C4C35;
+  --paper-2: #858839;
+  --card: #4C4C35;
+  --card-2: #858839;
+  --ink: #FFE270;
+  --ink-2: #DCFF3E;
+  --ink-3: #DFB836;
+  --line: #858839;
+  --line-strong: #DCFF3E;
+  --accent: #DCFF3E;
+  --accent-2: #DFB836;
+  --gold: #FFE270;
+  --button-ink: #4C4C35;
+  --panel: rgba(76, 76, 53, 0.98);
+}
+
+body.city-london {
+  --paper: #021225;
+  --paper-2: #238689;
+  --card: #021225;
+  --card-2: #238689;
+  --ink: #F2FFF6;
+  --ink-2: #CAFFDE;
+  --ink-3: #25C5E9;
+  --line: #238689;
+  --line-strong: #25C5E9;
+  --accent: #25C5E9;
+  --accent-2: #238689;
+  --gold: #CAFFDE;
+  --button-ink: #021225;
+  --panel: rgba(2, 18, 37, 0.98);
+}
+
+body.city-london .brand,
+body.city-london .search,
+body.city-london .legend,
+body.city-london .sources__toggle,
+body.city-london .sources__panel,
+body.city-london .panel,
+body.city-london .compass {
+  box-shadow: 0 2px 0 rgba(147, 73, 62, 0.68), 0 16px 36px rgba(2, 13, 13, 0.3);
+}
+
+body.city-london .brand__glyph,
+body.city-london .sources__toggle-icon,
+body.city-london .search-result--landmark .search-result__label,
+body.city-london .legend__row--landmark {
+  color: var(--accent);
+}
+
+body.city-london .search:focus-within {
+  border-color: var(--accent);
+  box-shadow: none;
 }
 
 #map { position: absolute; inset: 0; }
@@ -339,6 +451,7 @@ html, body {
   box-shadow: 0 3px 0 var(--line), 0 12px 28px rgba(42, 38, 32, 0.1);
 }
 .legend__title {
+  padding-right: 34px;
   font-family: var(--serif);
   font-size: 11px;
   font-weight: 600;
@@ -348,6 +461,44 @@ html, body {
   margin-bottom: 10px;
   padding-bottom: 8px;
   border-bottom: 1px dashed var(--line);
+}
+.legend__close {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: 25px;
+  height: 25px;
+  border: 1px solid var(--line-strong);
+  background: var(--card-2);
+  color: var(--ink-2);
+  font: 700 13px/1 var(--sans);
+  cursor: pointer;
+}
+.legend__close:hover {
+  background: var(--accent);
+  color: var(--button-ink, var(--paper));
+}
+.legend__reopen {
+  display: none;
+  border: 1px solid var(--line-strong);
+  background: var(--accent);
+  color: var(--button-ink, var(--paper));
+  padding: 11px 16px;
+  font: 700 11px/1 var(--sans);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.legend--closed {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.legend--closed > :not(.legend__reopen) {
+  display: none;
+}
+.legend--closed .legend__reopen {
+  display: block;
 }
 .legend__row {
   display: flex; align-items: center; gap: 12px;
@@ -505,9 +656,7 @@ html, body {
 .card__body--loading { padding-top: 50px; }
 .card__body--welcome {
   padding-top: 42px;
-  background:
-    radial-gradient(circle at top right, rgba(224, 122, 74, 0.16), transparent 38%),
-    linear-gradient(180deg, rgba(31, 38, 56, 0.96), rgba(26, 32, 48, 1));
+  background: var(--card);
 }
 
 .card__lede {
@@ -546,7 +695,7 @@ html, body {
   font-weight: 700;
   font-size: 32px;
   line-height: 1.06;
-  letter-spacing: -0.018em;
+  letter-spacing: 0;
   margin: 0;
   color: var(--ink);
 }
@@ -567,7 +716,7 @@ html, body {
 .card__divider-line {
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  background: var(--gold);
 }
 .card__divider-mark {
   font-size: 12px;
@@ -631,10 +780,24 @@ html, body {
   font-family: var(--serif);
 }
 
+.card__sources {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink-2);
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.card__sources a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.card__sources a:hover { text-decoration: underline; }
+
 .card__fact {
   margin: 24px 0 18px;
   padding: 18px 22px;
-  background: linear-gradient(135deg, rgba(216, 162, 58, 0.14) 0%, rgba(216, 162, 58, 0.05) 100%);
+  background: var(--card-2);
   border: 1.5px solid rgba(216, 162, 58, 0.4);
   border-radius: 12px;
   position: relative;
@@ -789,6 +952,9 @@ html, body {
 .card--victorian  .card__eyebrow { background: rgba(200, 110, 80, 0.16); color: #e2a288; }
 .card--victorian  .card__section h2::after { background: #c87a5a; }
 
+.card--historic    .card__eyebrow { background: rgba(212, 176, 100, 0.16); color: #e6c77f; }
+.card--historic    .card__section h2::after { background: #d4b064; }
+
 .card--contemporary .card__eyebrow { background: rgba(120, 150, 180, 0.16); color: #a8c0d8; }
 .card--contemporary .card__section h2::after { background: #6f8caa; }
 
@@ -858,6 +1024,141 @@ html, body {
   font-family: var(--serif) !important;
 }
 .maplibregl-ctrl-attrib a { color: var(--accent) !important; }
+
+/* ---------- squared solid atlas system ---------- */
+body.city-nyc,
+body.city-sf,
+body.city-dc,
+body.city-london {
+  --display: 'Instrument Serif', Georgia, serif;
+}
+
+body.city-nyc .brand__glyph,
+body.city-sf .brand__glyph {
+  color: var(--accent);
+}
+
+body.city-nyc .brand,
+body.city-nyc .search,
+body.city-nyc .legend,
+body.city-nyc .sources__toggle,
+body.city-nyc .sources__panel,
+body.city-nyc .panel,
+body.city-sf .brand,
+body.city-sf .search,
+body.city-sf .legend,
+body.city-sf .sources__toggle,
+body.city-sf .sources__panel,
+body.city-sf .panel {
+  box-shadow: none;
+}
+
+.brand,
+.search,
+.search-results,
+.search-result,
+.map-toggle,
+.compass,
+.legend,
+.sources__toggle,
+.sources__panel,
+.panel,
+.panel__close,
+.card__eyebrow,
+.card__meta,
+.card__fact,
+.card__note,
+.card__startup,
+.loading,
+.loading__bar,
+.legend__close,
+.legend__reopen,
+.maplibregl-ctrl-group,
+.maplibregl-ctrl-group button {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.brand {
+  border-width: 1px;
+  background: var(--card);
+}
+
+.brand__name,
+.card__title {
+  font-family: var(--display);
+  font-weight: 400;
+}
+
+.brand__name {
+  font-size: 23px;
+}
+
+.brand__sub {
+  font-style: normal;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.search,
+.legend,
+.sources__panel,
+.panel,
+.loading {
+  border-width: 1px;
+  background: var(--card);
+}
+
+.map-toggle,
+.sources__toggle {
+  border: 1px solid var(--line-strong);
+  background: var(--card);
+  color: var(--ink-2);
+}
+
+.map-toggle:hover,
+.sources__toggle:hover {
+  border-color: var(--accent);
+  background: var(--card-2);
+  color: var(--ink);
+}
+
+.map-toggle--active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--button-ink, var(--paper));
+}
+
+.map-toggle--active:hover {
+  background: var(--accent);
+  color: var(--button-ink, var(--paper));
+}
+
+.card__fact {
+  background: var(--card-2);
+  border-color: var(--accent);
+}
+
+.card__divider-line {
+  background: var(--accent);
+}
+
+.legend__swatch,
+.legend__swatch--pulse {
+  border-radius: 0;
+}
+
+.card__meta,
+.card__note {
+  background: var(--card-2);
+}
+
+.maplibregl-ctrl-group button {
+  border-bottom: 1px solid var(--line) !important;
+  background: var(--card) !important;
+}
 
 /* ---------- responsive ---------- */
 @media (max-width: 720px) {

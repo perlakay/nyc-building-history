@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Central London / Building Atlas</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body class="city-london">
+    <div id="map"></div>
+
+    <header class="topbar">
+      <div class="topbar__left">
+        <a class="brand brand--link" href="/" title="All cities">
+          <span class="brand__back">←</span>
+          <span class="brand__glyph">◆</span>
+          <span class="brand__name">Central London Atlas</span>
+          <span class="brand__sub">Westminster to Tower Bridge</span>
+        </a>
+      </div>
+      <div class="topbar__center">
+        <div class="search">
+          <svg class="search__icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="7" cy="7" r="5"/><path d="M11 11 L14 14"/>
+          </svg>
+          <input id="search-input" type="text" placeholder="Search Central London addresses or landmarks..." autocomplete="off" spellcheck="false" />
+          <button id="search-clear" class="search__clear" aria-label="Clear">×</button>
+        </div>
+        <div id="search-results" class="search-results"></div>
+      </div>
+      <div class="topbar__right">
+        <button id="landmark-toggle" class="map-toggle map-toggle--active" type="button" aria-pressed="true">Landmark pins</button>
+        <div class="compass" id="compass" title="Click to reset north">
+          <svg viewBox="0 0 40 40" width="32" height="32">
+            <circle cx="20" cy="20" r="17" fill="#f3ece1" stroke="#d4b064" stroke-width="1.5"/>
+            <g id="compass-rose">
+              <path d="M20 6 L23 20 L20 18 L17 20 Z" fill="#bd5440" stroke="#38504d" stroke-width="0.6" stroke-linejoin="round"/>
+              <path d="M20 34 L17 20 L20 22 L23 20 Z" fill="#f3ece1" stroke="#38504d" stroke-width="0.6" stroke-linejoin="round"/>
+            </g>
+            <text x="20" y="6.6" font-family="serif" font-size="5" fill="#38504d" font-weight="700" text-anchor="middle" dominant-baseline="middle">N</text>
+          </svg>
+        </div>
+      </div>
+    </header>
+
+    <aside id="panel" class="panel panel--hidden">
+      <div class="panel__header">
+        <div class="panel__hid">LONDON</div>
+        <button id="panel-close" class="panel__close" aria-label="Close">
+          <svg viewBox="0 0 12 12" width="10" height="10"><path d="M1 1 L11 11 M11 1 L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+        </button>
+      </div>
+      <div id="panel-content"></div>
+    </aside>
+
+    <div class="legend">
+      <div class="legend__title">GLA construction age band</div>
+      <div class="legend__row"><span>Top-down view · footprint positions</span></div>
+      <div class="legend__row"><span class="legend__swatch" style="background:#20566A"></span><span>Pre-1900</span></div>
+      <div class="legend__row"><span class="legend__swatch" style="background:#F2FFF6"></span><span>1900 - 1929</span></div>
+      <div class="legend__row"><span class="legend__swatch" style="background:#238689"></span><span>1930 - 1949</span></div>
+      <div class="legend__row"><span class="legend__swatch" style="background:#CAFFDE"></span><span>1950 - 1966</span></div>
+      <div class="legend__row"><span class="legend__swatch" style="background:#25C5E9"></span><span>1967 - 1982</span></div>
+      <div class="legend__row"><span class="legend__swatch" style="background:#19707C"></span><span>1983 - 1995</span></div>
+      <div class="legend__row"><span class="legend__swatch" style="background:#8FE8D7"></span><span>1996 - 2011</span></div>
+      <div class="legend__row"><span class="legend__swatch" style="background:#4ADCEB"></span><span>2012 onward</span></div>
+      <div class="legend__row"><span class="legend__swatch" style="background:#15384B"></span><span>No matched age record</span></div>
+      <div class="legend__row legend__row--landmark"><span class="legend__swatch" style="background:#86F2FF"></span><span>Curated landmark</span></div>
+    </div>
+
+    <div class="sources" id="sources">
+      <button class="sources__toggle" id="sources-toggle" aria-label="Toggle data sources">
+        <span class="sources__toggle-icon">ⓘ</span><span class="sources__toggle-text">Data sources</span>
+      </button>
+      <div class="sources__panel">
+        <div class="sources__title">Data sources</div>
+        <div>◉ Age bands · <a href="https://data.london.gov.uk/dataset/london-building-stock-model-2-lbsm-2-2k55d/" target="_blank">GLA London Building Stock Model 2</a> · based on October 2024 data</div>
+        <div>◉ Building footprints · <a href="https://osdatahub.os.uk/downloads/open/OpenMapLocal" target="_blank">Ordnance Survey OpenMap Local</a> · retrieved 24 May 2026</div>
+        <div>◉ Address search · <a href="https://nominatim.org/" target="_blank">Nominatim / OpenStreetMap</a></div>
+        <div>◉ Landmark stories · curated</div>
+      </div>
+    </div>
+
+    <div id="loading" class="loading">
+      <div class="loading__label">LOADING ATLAS</div>
+      <div class="loading__bar"><div class="loading__fill" id="loading-fill"></div></div>
+      <div class="loading__hint" id="loading-hint">painting Central London...</div>
+    </div>
+
+    <script type="module">
+      import { LONDON } from '/src/cities/london.js';
+      window.CITY = LONDON;
+      await import('/src/main.js');
+    </script>
+  </body>
+</html>
