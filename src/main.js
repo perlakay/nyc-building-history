@@ -144,6 +144,15 @@ function fullBuildingProperties(properties = {}) {
   return (id != null && buildingByBin.get(id)?.properties) || properties;
 }
 
+function landmarkForBuildingId(id) {
+  if (id == null) return null;
+  const key = String(id);
+  return LANDMARKS.find(landmark =>
+    String(landmark[ID_FIELD]) === key ||
+    (Array.isArray(landmark[`${ID_FIELD}Aliases`]) && landmark[`${ID_FIELD}Aliases`].map(String).includes(key))
+  ) || null;
+}
+
 function indexBuildingDetails(fc) {
   for (const feature of fc.features) {
     const id = feature.properties?.[ID_FIELD];
@@ -986,13 +995,13 @@ map.on('click', (e) => {
   }
 
   // 2. Any building under the cursor → its own card. If the building is a
-  // curated landmark (matched by BIN), open the hand-written landmark card
-  // instead of the parcel record.
+  // curated landmark (matched by BIN or city-specific aliases), open the
+  // hand-written landmark card instead of a reverse-geocoded point record.
   if (map.getLayer('buildings-fill')) {
     const bld = map.queryRenderedFeatures(e.point, { layers: ['buildings-fill'] });
     if (bld.length) {
       const idVal = bld[0].properties[ID_FIELD];
-      const lm = idVal ? LANDMARKS.find(l => l[ID_FIELD] === idVal) : null;
+      const lm = landmarkForBuildingId(idVal);
       if (lm) {
         setSelectedBuilding(null);
         openLandmark(lm.id);
@@ -1012,6 +1021,13 @@ map.on('click', (e) => {
       { layers: ['buildings-fill'] }
     );
     if (wider.length) {
+      const idVal = wider[0].properties[ID_FIELD];
+      const lm = landmarkForBuildingId(idVal);
+      if (lm) {
+        setSelectedBuilding(null);
+        openLandmark(lm.id);
+        return;
+      }
       setSelectedBuilding(wider[0].id);
       const c = featureCentroid(wider[0]) || [e.lngLat.lng, e.lngLat.lat];
       openGenericAt({ lng: c[0], lat: c[1] }, fullBuildingProperties(wider[0].properties));
@@ -1455,7 +1471,7 @@ createSearch({
     // r.idValue is the city's authoritative building id (BIN for NYC,
     // building_id for SF, etc.) returned by the geocoder when available.
     if (r.idValue != null) {
-      const lm = LANDMARKS.find(l => l[ID_FIELD] === r.idValue);
+      const lm = landmarkForBuildingId(r.idValue);
       if (lm) {
         if (searchMarker) { searchMarker.remove(); searchMarker = null; }
         setSelectedBuilding(null);

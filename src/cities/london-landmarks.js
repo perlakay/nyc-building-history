@@ -119,6 +119,10 @@ export const LANDMARKS = [
   {
     id: 'british-museum',
     bin: 'os-1D6531A8-9C72-4C8B-8A60-C774FA1D2FB1',
+    binAliases: [
+      'os-24885896-950C-4EA1-B453-7A4D885D94BC',
+      'os-3E7856AA-3D23-4ECC-A9C9-295D3F1E1D35'
+    ],
     name: 'British Museum',
     coords: [-0.1269, 51.5194],
     year: 1857,
